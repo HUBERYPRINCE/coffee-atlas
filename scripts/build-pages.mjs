@@ -10,6 +10,7 @@
  *   _site/.nojekyll
  */
 
+import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,16 +72,18 @@ async function buildPages() {
     fs.readFile(CSS_PATH, 'utf8'),
   ]);
 
-  // 1. Minify CSS
+  // 1. Minify CSS with content hash for instant cache-busting on GitHub Pages
   const cssTransformed = await esbuild.transform(rawCss, {
     loader: 'css',
     minify: true,
     target: ['chrome100', 'safari15', 'firefox100'],
   });
   const minifiedCss = cssTransformed.code.trim();
-  await fs.writeFile(path.join(SITE_DIR, 'atelier-dark.css'), minifiedCss, 'utf8');
+  const cssHash = crypto.createHash('sha256').update(minifiedCss).digest('hex').slice(0, 8);
+  const cssFileName = `atelier-dark.${cssHash}.css`;
+  await fs.writeFile(path.join(SITE_DIR, cssFileName), minifiedCss, 'utf8');
 
-  // 2. Bundle JS + Three.js + data + engine + art + UI
+  // 2. Bundle JS + Three.js + data + engine + art + UI with content hash
   const jsBundleResult = await esbuild.build({
     entryPoints: [ENTRY_JS_PATH],
     bundle: true,
@@ -100,15 +103,17 @@ async function buildPages() {
     throw new Error('esbuild produced no output bundle.');
   }
   const bundledJs = jsBundleResult.outputFiles[0].text.trim();
-  await fs.writeFile(path.join(SITE_DIR, 'app.bundle.js'), bundledJs, 'utf8');
+  const jsHash = crypto.createHash('sha256').update(bundledJs).digest('hex').slice(0, 8);
+  const jsFileName = `app.${jsHash}.js`;
+  await fs.writeFile(path.join(SITE_DIR, jsFileName), bundledJs, 'utf8');
 
-  // 3. Rewrite index.html to point to local bundled CSS & JS (zero node_modules / CDN)
+  // 3. Rewrite index.html to point to content-hashed local CSS & JS (zero node_modules / CDN / stale cache)
   let html = templateHtml;
   const cssLinkRegex = /<link\s+rel=["']stylesheet["']\s+href=["']\.\/src\/styles\/atelier-dark\.css["']\s*\/?>/i;
   if (!cssLinkRegex.test(html)) {
     throw new Error('Could not locate stylesheet link in index.html');
   }
-  html = html.replace(cssLinkRegex, '<link rel="stylesheet" href="./atelier-dark.css" />');
+  html = html.replace(cssLinkRegex, `<link rel="stylesheet" href="./${cssFileName}" />`);
 
   const importMapRegex = /<!--\s*STANDALONE_IMPORTMAP_START\s*-->[\s\S]*?<!--\s*STANDALONE_IMPORTMAP_END\s*-->/i;
   html = html.replace(importMapRegex, '');
@@ -120,7 +125,7 @@ async function buildPages() {
   if (!scriptBlockRegex.test(html)) {
     throw new Error('Could not locate STANDALONE_SCRIPT_START/END in index.html');
   }
-  html = html.replace(scriptBlockRegex, '<script defer src="./app.bundle.js"></script>');
+  html = html.replace(scriptBlockRegex, `<script defer src="./${jsFileName}"></script>`);
 
   const stamp = `<!-- Coffee-Atlas-3D Web Pages Edition | Built ${new Date().toISOString()} -->\n`;
   await fs.writeFile(path.join(SITE_DIR, 'index.html'), stamp + html, 'utf8');
