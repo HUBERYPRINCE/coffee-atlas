@@ -848,6 +848,10 @@ function initApp() {
     compareViewEl.hidden = !inCompare;
     if (quizViewEl) quizViewEl.hidden = !inQuiz;
 
+    if (!inGallery) {
+      galleryView.onHide?.();
+    }
+
     tabStageBtn?.classList.toggle('is-active', inStage);
     tabStageBtn?.setAttribute('aria-selected', String(inStage));
     tabGalleryBtn?.classList.toggle('is-active', inGallery);
@@ -1269,6 +1273,11 @@ function initApp() {
         setView('gallery');
         return;
       }
+      if (currentView === 'gallery' && galleryView.isMaximized?.()) {
+        event.preventDefault();
+        galleryView.closeMaximize();
+        return;
+      }
       if (currentView === 'gallery' || currentView === 'compare') {
         event.preventDefault();
         setView('stage');
@@ -1277,6 +1286,10 @@ function initApp() {
     }
 
     if (beanStudio.isOpen()) return;
+
+    if (currentView === 'gallery' && galleryView.handleKeyDown?.(event)) {
+      return;
+    }
 
     if (key === '?' || (key === '/' && event.shiftKey)) {
       event.preventDefault();
@@ -1427,6 +1440,8 @@ function initApp() {
       if (regionId) galleryView.selectMapRegion(regionId);
       else galleryView.setMapOpen(true);
     },
+    setGalleryMode: (mode) => galleryView.setGalleryMode?.(mode),
+    isGalleryMaximized: () => Boolean(galleryView.isMaximized?.()),
     toggleTerroirMap: () => galleryView.toggleMap(),
     getMasteryStats: () => quizView.getMasteryStats(),
     openPosterModal,
