@@ -343,9 +343,9 @@ export function createHoloStage(containerEl, callbacks = {}) {
       : { matches: false, addEventListener() {}, removeEventListener() {} };
 
   let theme =
-    typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'light'
-      ? 'light'
-      : 'dark';
+    typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'dark'
+      ? 'dark'
+      : 'light';
 
   renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -872,8 +872,14 @@ export function createHoloStage(containerEl, callbacks = {}) {
 
     setFinish(value) {
       if (FINISH_MAP[value] === undefined) return;
+      const changed = finish !== value;
       finish = value;
       uniforms.uFinish.value = FINISH_MAP[value];
+      // Tactile wrist-tilt shimmer impulse so the new holographic sheen immediately glints across the card
+      if (changed && !reducedMotion.matches) {
+        dealRotOffsetY = dealDirection * 0.145;
+        dealDirection = -dealDirection;
+      }
       emitState();
     },
 

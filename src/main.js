@@ -87,13 +87,13 @@ function buildDeckMeta(cards) {
   };
 }
 
-const THEME_STORAGE_KEY = 'coffee-atlas-theme-v1';
+const THEME_STORAGE_KEY = 'coffee-atlas-theme-v2';
 
 function loadSavedTheme() {
   try {
-    return window.localStorage?.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+    return window.localStorage?.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
   } catch {
-    return 'dark';
+    return 'light';
   }
 }
 
@@ -141,6 +141,20 @@ function computeStageGlowRgb(card) {
     }
   }
 
+  return `${r}, ${g}, ${b}`;
+}
+
+function computeStageAccentRgb(card) {
+  const palette = card?.visual?.palette || {};
+  const raw = parseHexColor(palette.accent) || parseHexColor(palette.foil) || [214, 162, 94];
+  let [r, g, b] = raw;
+  const peak = Math.max(r, g, b);
+  if (peak > 0 && peak < 185) {
+    const boost = Math.min(2.1, 192 / peak);
+    r = Math.min(242, Math.round(r * boost));
+    g = Math.min(242, Math.round(g * boost));
+    b = Math.min(242, Math.round(b * boost));
+  }
   return `${r}, ${g}, ${b}`;
 }
 
@@ -371,13 +385,17 @@ function initApp() {
     },
   });
 
-  // 2. Mount Bottom Stage HUD
+  // 2. Mount Bottom Floating Glass Stage HUD
   const stageHud = createStageHud(stageHudMountEl, {
+    cards: activeCards,
     onPrev() {
       stepCard(-1);
     },
     onNext() {
       stepCard(1);
+    },
+    onSelectCard(cardId) {
+      selectCard(cardId, { switchToStage: true, keepDrawer: drawerOpen });
     },
     onOpenDrawer() {
       setDrawerOpen(true);
@@ -404,6 +422,11 @@ function initApp() {
     onSetAutoPlay(enabled) {
       stage.setAutoPlay(enabled);
       stageHud.syncState(stage.getState());
+    },
+    onResetView() {
+      stage.resetView();
+      stageHud.syncState(stage.getState());
+      showToast('已复位 3D 展台视角');
     },
     onResetParams(card) {
       const target = card || currentCard;
@@ -524,6 +547,7 @@ function initApp() {
       filterFacets: activeDeckMeta.filterFacets,
       invalidateIds,
     });
+    stageHud.setDeck(activeCards);
     compareView.setCards(activeCards, invalidateIds);
     readingDrawer.setCardMap(activeCardMap);
     updateStageEdgeNav();
@@ -580,34 +604,36 @@ function initApp() {
     },
   });
 
-  // 5. Dual Theme System (Dark Coffee Atelier / Light Gallery "白相美术馆") & Dynamic Stage Glow
+  // 5. Dual iOS Liquid Glass Theme System (Bright Porcelain Glass default / Smoked Darkroom Glass)
   function applyStageGlow(card) {
     const rgb = computeStageGlowRgb(card);
+    const accentRgb = computeStageAccentRgb(card);
     document.documentElement.style.setProperty('--stage-glow-rgb', rgb);
+    document.documentElement.style.setProperty('--stage-glow-accent-rgb', accentRgb);
   }
 
   function applyTheme(nextTheme, { persist = true, notify = false } = {}) {
-    const normalized = nextTheme === 'light' ? 'light' : 'dark';
+    const normalized = nextTheme === 'dark' ? 'dark' : 'light';
     currentTheme = normalized;
     document.documentElement.dataset.theme = normalized;
 
     if (metaThemeColorEl) {
-      metaThemeColorEl.setAttribute('content', normalized === 'light' ? '#F3EFE7' : '#16110E');
+      metaThemeColorEl.setAttribute('content', normalized === 'light' ? '#EFF2F7' : '#161210');
     }
 
     if (btnThemeToggle) {
       const isLight = normalized === 'light';
-      btnThemeToggle.setAttribute('aria-pressed', String(isLight));
+      btnThemeToggle.setAttribute('aria-pressed', String(!isLight));
       btnThemeToggle.setAttribute(
         'aria-label',
-        isLight ? '切换暗房手冲吧台深色模式' : '切换白相美术馆浅色模式',
+        isLight ? '切换暗房玻璃深色模式' : '切换亮境玻璃浅色模式',
       );
       btnThemeToggle.title = isLight
-        ? '切换暗房手冲吧台深色展台 (T)'
-        : '切换白相美术馆浅色展台 (T)';
+        ? '切换暗房玻璃深色展台 (T)'
+        : '切换亮境玻璃浅色展台 (T)';
     }
     if (btnThemeLabel) {
-      btnThemeLabel.textContent = normalized === 'light' ? '暗房' : '白相';
+      btnThemeLabel.textContent = normalized === 'light' ? '暗房' : '亮境';
     }
 
     if (persist) {
@@ -633,8 +659,8 @@ function initApp() {
     if (notify) {
       showToast(
         normalized === 'light'
-          ? '已切换至「白相美术馆」浅色展台'
-          : '已切换至「暗房手冲吧台」深色展台',
+          ? '已切换至「亮境玻璃」浅色展台'
+          : '已切换至「暗房玻璃」深色展台',
       );
     }
   }
@@ -1199,6 +1225,9 @@ function initApp() {
       if (event.key === 'Escape') {
         event.preventDefault();
         event.target.blur();
+        if (stageHud.isJumpOpen?.()) {
+          stageHud.closeJump();
+        }
         if (beanStudio.isOpen()) {
           beanStudio.close();
         }
@@ -1259,6 +1288,14 @@ function initApp() {
     if (helpModalOpen) return;
 
     if (currentView === 'quiz' && quizView.handleKeyDown(event)) {
+      return;
+    }
+
+    if (lower === 'k' || (key === '/' && !event.shiftKey)) {
+      event.preventDefault();
+      if (currentView !== 'stage') setView('stage');
+      if (stageHud.isJumpOpen?.()) stageHud.closeJump();
+      else stageHud.openJump?.();
       return;
     }
 
@@ -1413,6 +1450,11 @@ function initApp() {
     keepDrawer: false,
     updateHash: Boolean(initialRoute.cardId) && currentView === 'stage',
   });
+
+  // Gracefully auto-fade the stage gesture hint so the luminous glass viewport stays uncluttered
+  window.setTimeout(() => {
+    dismissGestureHint();
+  }, 4500);
 }
 
 if (document.readyState === 'loading') {
