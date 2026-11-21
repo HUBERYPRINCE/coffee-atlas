@@ -82,46 +82,50 @@ float microGroove(vec2 uv) {
   return 0.5 + 0.5 * sin(uv.x * 165.0 + uv.y * 105.0 + uView.x * 26.0 - uView.y * 14.0);
 }
 
-// View-angle driven holographic film color with clear physical differentiation across pearl / silver / gold.
+// View-angle + gentle time-flowing holographic film color (Champagne Gold + Prismatic Rainbow / Platinum / Nacre).
 vec3 film(vec2 uv) {
-  float phase = uv.x * 0.85 + uv.y * 0.55 + uView.x * 1.55 - uView.y * 0.95;
+  float flow = uTime * 0.085;
+  float phase = uv.x * 0.88 + uv.y * 0.58 + uView.x * 1.55 - uView.y * 0.95 + flow;
 
   if (uFinish > 2.5) {
-    // 烫金 (molten champagne-copper gold foil)
+    // 烫金流光 (radiant molten champagne gold with subtle 7-color prismatic edge iridescence)
     float hi = 0.5 + 0.5 * sin(phase * 6.2831853);
     float glint = 0.5 + 0.5 * cos((phase + 0.22) * 6.2831853);
-    float sheen = pow(0.5 + 0.5 * sin((phase * 1.42 - 0.10) * 6.2831853), 2.2);
-    vec3 deepCopper = vec3(0.64, 0.39, 0.13);
-    vec3 moltenGold = vec3(0.93, 0.72, 0.32);
-    vec3 champagne = vec3(1.00, 0.94, 0.70);
-    vec3 baseGold = mix(deepCopper, moltenGold, hi * 0.62 + glint * 0.38);
-    return mix(baseGold, champagne, sheen * 0.58);
+    float sheen = pow(0.5 + 0.5 * sin((phase * 1.42 - 0.10) * 6.2831853), 2.0);
+    vec3 warmGold = vec3(0.92, 0.70, 0.28);
+    vec3 moltenGold = vec3(1.00, 0.85, 0.44);
+    vec3 champagne = vec3(1.00, 0.96, 0.78);
+    vec3 baseGold = mix(warmGold, moltenGold, hi * 0.60 + glint * 0.40);
+    vec3 goldTone = mix(baseGold, champagne, sheen * 0.62);
+    vec3 prismWhisper = spectrum(phase * 1.08);
+    return mix(goldTone, prismWhisper, 0.34);
   }
 
   if (uFinish > 0.5 && uFinish < 1.5) {
-    // 银箔 (crisp cool brushed platinum-silver foil)
-    float brush = 0.5 + 0.5 * sin((uv.x * 1.15 - uv.y * 0.35 + uView.x * 1.8 - uView.y * 0.7) * 6.2831853);
-    float specBand = pow(0.5 + 0.5 * sin((phase * 1.25 + 0.18) * 6.2831853), 2.4);
-    vec3 coolSteel = vec3(0.68, 0.75, 0.84);
-    vec3 brushedPlat = vec3(0.86, 0.91, 0.97);
-    vec3 iceGlint = vec3(0.96, 0.99, 1.00);
+    // 银箔流光 (crisp brushed platinum-silver foil with cool ice-rainbow glint)
+    float brush = 0.5 + 0.5 * sin((uv.x * 1.15 - uv.y * 0.35 + uView.x * 1.8 - uView.y * 0.7 + flow) * 6.2831853);
+    float specBand = pow(0.5 + 0.5 * sin((phase * 1.25 + 0.18) * 6.2831853), 2.2);
+    vec3 coolSteel = vec3(0.76, 0.83, 0.92);
+    vec3 brushedPlat = vec3(0.92, 0.95, 0.99);
+    vec3 iceGlint = vec3(0.98, 1.00, 1.00);
     vec3 baseSilver = mix(coolSteel, brushedPlat, brush * 0.72 + 0.28);
-    return mix(baseSilver, iceGlint, specBand * 0.55);
+    vec3 silverTone = mix(baseSilver, iceGlint, specBand * 0.55);
+    return mix(silverTone, spectrum(phase * 1.15), 0.26);
   }
 
-  // 珠光 (vivid iridescent mother-of-pearl nacre refraction)
+  // 七彩珠光 (vivid flowing 7-color prismatic rainbow mother-of-pearl refraction)
   vec3 primaryRainbow = spectrum(phase * 1.18 + uView.x * 0.45);
   vec3 secondaryNacre = spectrum(phase * 0.78 - uv.y * 0.45 + 0.28);
-  vec3 nacre = mix(primaryRainbow, secondaryNacre, 0.34);
-  // Subtle luminous silk sheen without washing out prismatic hues
-  return mix(nacre, vec3(0.98, 0.94, 0.96), 0.09);
+  vec3 nacre = mix(primaryRainbow, secondaryNacre, 0.38);
+  return mix(nacre, vec3(1.00, 0.96, 0.98), 0.08);
 }
 
-// 10th-power silky directional sweep driven by local viewing angle.
+// Silky directional flowing sweep driven by local viewing angle + gentle time drift.
 float sweep(vec2 uv) {
-  float primary = pow(0.5 + 0.5 * sin((uv.x * 0.72 + uv.y * 0.45 + uView.x * 1.25 + uView.y * 0.65) * 6.2831853), 10.0);
-  float secondary = pow(0.5 + 0.5 * sin((uv.x * 0.48 - uv.y * 0.62 + uView.x * 0.90 - uView.y * 0.78 + 0.3) * 6.2831853), 14.0);
-  return clamp(primary + secondary * 0.35, 0.0, 1.30);
+  float flow = uTime * 0.14;
+  float primary = pow(0.5 + 0.5 * sin((uv.x * 0.78 + uv.y * 0.48 + uView.x * 1.25 + uView.y * 0.65 - flow) * 6.2831853), 7.5);
+  float secondary = pow(0.5 + 0.5 * sin((uv.x * 0.48 - uv.y * 0.62 + uView.x * 0.90 - uView.y * 0.78 + flow * 0.7 + 0.3) * 6.2831853), 10.0);
+  return clamp(primary + secondary * 0.42, 0.0, 1.38);
 }
 `;
 
@@ -146,11 +150,17 @@ void main() {
   vec3 bg = texture2D(tBackground, clamp(bu, 0.0, 1.0)).rgb;
   vec3 col = mix(bg, subject.rgb, subject.a);
 
-  // Subtle finish-calibrated tonal grade (keeps illustration authentic while distinguishing materials)
+  // Luminous golden-studio exposure lift so dark botanical prints radiate like gold/prismatic foil cards
+  vec3 lifted = pow(max(col, vec3(0.0001)), vec3(0.83)) * 1.12 + vec3(0.056, 0.043, 0.025);
+  col = mix(col, lifted, 0.76);
+
+  // Subtle finish-calibrated tonal grade (keeps illustration vibrant while distinguishing materials)
   if (uFinish > 2.5) {
-    col = col * vec3(1.035, 0.965, 0.835) + vec3(0.028, 0.011, 0.0);
+    col = col * vec3(1.06, 1.00, 0.88) + vec3(0.036, 0.022, 0.004);
   } else if (uFinish > 0.5 && uFinish < 1.5) {
-    col = col * vec3(0.955, 0.985, 1.035);
+    col = col * vec3(0.98, 1.01, 1.06) + vec3(0.015, 0.020, 0.028);
+  } else if (uFinish < 0.5) {
+    col = col * vec3(1.03, 1.02, 1.05) + vec3(0.024, 0.020, 0.028);
   }
 
   // Mid-depth botanical/aromatic effects layer between subject and typography
@@ -168,34 +178,30 @@ void main() {
   bool isSilver = uFinish > 0.5 && uFinish < 1.5;
   bool isPearl = uFinish < 0.5;
 
-  // Silky metallic laminate tuned per material: amplifies dark areas so obsidian roasts shimmer cleanly
-  float finishBoost = isGold ? 1.62 : (isSilver ? 1.42 : 1.32);
-  float absorbFactor = isPearl ? 0.14 : (isSilver ? 0.17 : 0.20);
-  col *= 1.0 - amount * absorbFactor * (1.0 - foil) * (0.20 + band * 0.80);
-  col += foil * amount * band * finishBoost * (0.068 + 0.122 * (1.0 - luminance));
+  // Radiant golden & 7-color prismatic metallic sheen across shadows and midtones
+  float finishBoost = isGold ? 1.85 : (isSilver ? 1.62 : 1.78);
+  col += foil * amount * (0.068 + band * finishBoost * 0.145) * (0.65 + 0.55 * (1.0 - luminance));
 
   // Diagonal micro-groove anisotropic holographic diffraction glint modulated by sweep(uv)
   if (isPearl) {
-    // Iridescent prismatic micro-diffraction wave across pearl mother-of-pearl finish
-    float pPhase = uv.x * 0.95 + uv.y * 0.65 + uView.x * 1.9 - uView.y * 1.1 + groove * 0.22;
+    float pPhase = uv.x * 0.95 + uv.y * 0.65 + uView.x * 1.9 - uView.y * 1.1 + uTime * 0.14 + groove * 0.24;
     vec3 prism = spectrum(pPhase);
-    float nacreWave = pow(groove, 1.4) * (0.22 + band * 0.95);
-    col += prism * amount * nacreWave * (0.055 + 0.085 * (1.0 - luminance));
+    float nacreWave = pow(groove, 1.35) * (0.28 + band * 1.15);
+    col += prism * amount * nacreWave * (0.075 + 0.105 * (1.0 - luminance));
   } else if (isSilver) {
-    // Crisp cool platinum-silver anisotropic brushed micro-grooves
-    float brushGlint = pow(groove, 2.1) * (0.18 + band * 1.15);
-    col += vec3(0.86, 0.93, 1.00) * amount * brushGlint * (0.062 + 0.085 * (1.0 - luminance));
+    float brushGlint = pow(groove, 1.9) * (0.24 + band * 1.25);
+    col += vec3(0.90, 0.95, 1.00) * amount * brushGlint * (0.072 + 0.095 * (1.0 - luminance));
   } else if (isGold) {
-    // Warm molten champagne-gold fine metallic foil grooves
-    float goldGroove = pow(groove, 1.8) * (0.16 + band * 1.10);
-    col += vec3(1.00, 0.88, 0.56) * amount * goldGroove * (0.064 + 0.082 * (1.0 - luminance));
+    float goldGroove = pow(groove, 1.6) * (0.24 + band * 1.25);
+    vec3 goldPrism = mix(vec3(1.00, 0.90, 0.58), spectrum(uv.x * 0.9 + uv.y * 0.6 + uTime * 0.12), 0.35);
+    col += goldPrism * amount * goldGroove * (0.078 + 0.098 * (1.0 - luminance));
   }
 
-  // Edge seal foil halo along card perimeter
+  // Radiant molten champagne-gold / prismatic edge seal halo along card perimeter
   float edgeDist = min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y));
-  float edge = 1.0 - smoothstep(0.014, 0.058, edgeDist);
-  float edgeGain = isGold ? 0.48 : (isSilver ? 0.40 : 0.34);
-  col = mix(col, foil * 0.80 + 0.18, edge * amount * edgeGain);
+  float edge = 1.0 - smoothstep(0.016, 0.062, edgeDist);
+  float edgeGain = isGold ? 0.68 : (isSilver ? 0.58 : 0.62);
+  col = mix(col, foil * 0.86 + 0.16, edge * amount * edgeGain);
 
   // 480x720 micron holographic shimmer flakes
   vec2 cell = floor(uv * vec2(480.0, 720.0));
@@ -210,12 +216,11 @@ void main() {
   float lineGain = isGold ? (0.048 + band * 0.21) : (0.036 + band * 0.16);
   col += lineColor * lineMask * lineWeight * lineGain * amount;
 
-  // Zero-parallax locked gilded frame & typography overlay (stays razor-sharp)
+  // Zero-parallax locked gilded frame & typography overlay (stays razor-sharp & gleams like live foil)
   vec4 text = texture2D(tText, uv);
   vec3 textCol = text.rgb;
-  // Whisper of metallic reflection on warm gold frame strokes while preserving dark scrim legibility
-  float textGoldMask = smoothstep(0.45, 0.75, text.r) * (1.0 - smoothstep(0.65, 0.92, text.b));
-  textCol += foil * (band * 0.85 + groove * band * 0.35) * amount * textGoldMask * 0.13;
+  float textGoldMask = smoothstep(0.45, 0.78, text.r) * (1.0 - smoothstep(0.68, 0.94, text.b));
+  textCol += foil * (0.12 + band * 0.85 + groove * band * 0.35) * amount * textGoldMask * 0.26;
   col = mix(col, textCol, text.a * (1.0 - uRelief));
 
   gl_FragColor = vec4(pow(clamp(col, 0.0, 1.0), vec3(2.2)), 1.0);
@@ -246,18 +251,18 @@ void main() {
     // Slight warm-bronze darkening on light gallery backdrop so cotton edge remains crisp
     col = mix(col, col * vec3(0.80, 0.76, 0.71), uThemeLight * 0.72);
   } else if (uFinish > 2.5) {
-    // Brushed molten champagne-copper gold bevel
-    vec3 base = mix(vec3(0.48, 0.31, 0.12), vec3(0.88, 0.67, 0.30), ndotv * 0.65 + 0.25);
-    col = mix(base, film(vUv) * 0.74 + 0.26, amt * 0.70);
-    col += vec3(1.0, 0.92, 0.66) * (spec * 0.44 + band * 0.24 + groove * band * 0.14 + fresnel * 0.16) * max(amt, 0.35);
+    // Mirror-bright molten champagne-gold & prismatic bevel
+    vec3 base = mix(vec3(0.74, 0.56, 0.25), vec3(0.99, 0.86, 0.52), ndotv * 0.65 + 0.28);
+    col = mix(base, film(vUv) * 0.78 + 0.22, amt * 0.74);
+    col += vec3(1.0, 0.95, 0.76) * (spec * 0.48 + band * 0.28 + groove * band * 0.16 + fresnel * 0.22) * max(amt, 0.45);
   } else if (uFinish > 0.5 && uFinish < 1.5) {
-    // Brushed platinum silver bevel
-    vec3 base = mix(vec3(0.44, 0.49, 0.56), vec3(0.83, 0.88, 0.94), ndotv * 0.65 + 0.25);
-    col = mix(base, film(vUv) * 0.68 + 0.32, amt * 0.68);
-    col += vec3(0.95, 0.98, 1.0) * (spec * 0.48 + band * 0.22 + groove * band * 0.15 + fresnel * 0.15) * max(amt, 0.35);
+    // Luminous brushed platinum silver bevel
+    vec3 base = mix(vec3(0.64, 0.71, 0.78), vec3(0.94, 0.97, 1.00), ndotv * 0.65 + 0.28);
+    col = mix(base, film(vUv) * 0.72 + 0.28, amt * 0.70);
+    col += vec3(0.97, 0.99, 1.0) * (spec * 0.50 + band * 0.26 + groove * band * 0.16 + fresnel * 0.20) * max(amt, 0.45);
   } else {
-    // Satin pearl iridescent bevel
-    vec3 base = mix(vec3(0.60, 0.56, 0.55), vec3(0.86, 0.83, 0.82), ndotv * 0.65 + 0.25);
+    // Radiant 7-color prismatic mother-of-pearl bevel
+    vec3 base = mix(vec3(0.76, 0.72, 0.74), vec3(0.96, 0.94, 0.96), ndotv * 0.65 + 0.28);
     col = mix(base, film(vUv) * 0.72 + 0.28, amt * 0.76);
     col += film(vUv) * (spec * 0.36 + band * 0.22 + fresnel * 0.16) * max(amt, 0.32);
   }

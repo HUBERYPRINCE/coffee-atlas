@@ -413,7 +413,7 @@ export function createHoloStage(containerEl, callbacks = {}) {
   let dealDirection = 1;
 
   let finish = 'gold';
-  let foil = 0.62;
+  let foil = 0.78;
   let relief = false;
   let flipped = false;
   let auto = !reducedMotion.matches;
@@ -547,7 +547,7 @@ export function createHoloStage(containerEl, callbacks = {}) {
   function applyCardVisualDefaults(card) {
     const vis = card?.visual || {};
     finish = FINISH_MAP[vis.defaultFinish] !== undefined ? vis.defaultFinish : 'gold';
-    foil = THREE.MathUtils.clamp(vis.foilStrength ?? 0.62, 0, 1);
+    foil = THREE.MathUtils.clamp(Math.max(vis.foilStrength ?? 0.78, 0.72), 0, 1);
 
     const d = vis.depths || {};
     params.subjectScale = THREE.MathUtils.clamp(d.subjectScale ?? 1.0, 0.75, 1.35);

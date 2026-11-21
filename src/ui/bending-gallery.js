@@ -34,13 +34,24 @@ const BENDING_FRAG = /* glsl */ `
   uniform float uLoaded;
   uniform float uBorderRadius;
   uniform float uFocus;
+  uniform float uTime;
+  uniform float uArcX;
   uniform vec3 uPlaceholderTop;
   uniform vec3 uPlaceholderBottom;
   varying vec2 vUv;
 
+  float hash21(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+  }
+
   float roundedBoxSDF(vec2 p, vec2 b, float r) {
     vec2 q = abs(p) - b + vec2(r);
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
+  }
+
+  // Radiant 7-color prismatic rainbow spectrum
+  vec3 spectrum(float phase) {
+    return 0.62 + 0.38 * cos(6.2831853 * (phase + vec3(0.0, 0.33, 0.67)));
   }
 
   void main() {
@@ -55,13 +66,48 @@ const BENDING_FRAG = /* glsl */ `
     vec4 texCol = texture2D(tMap, vUv);
     vec3 col = mix(fallbackCol, texCol.rgb, uLoaded);
 
-    // Bright studio rim highlight so cards float crisply in the luminous light environment
-    float rim = smoothstep(-0.018, -0.002, d) * (0.5 + 0.5 * vUv.y);
-    col += vec3(1.0, 0.99, 0.97) * rim * 0.14;
+    // 1. Warm luminous champagne shadow-lift so dark botanical illustrations glow richly
+    vec3 lifted = pow(max(col, vec3(0.0001)), vec3(0.82)) * 1.13 + vec3(0.068, 0.052, 0.030);
+    col = mix(col, lifted, 0.78);
 
-    // Keep side cards vivid & luminous (never muddy or dark)
-    float focusLift = mix(0.95, 1.04, uFocus);
-    col *= focusLift;
+    // 2. Flowing Champagne Gold + 7-Color Prismatic Holographic Foil (鎏金七彩流光)
+    float phase = vUv.x * 0.92 + vUv.y * 0.62 + uArcX * 0.58 + uTime * 0.14;
+    vec3 rainbow = spectrum(phase);
+    vec3 gold = mix(
+      vec3(0.95, 0.76, 0.34),
+      vec3(1.00, 0.95, 0.76),
+      0.5 + 0.5 * sin(phase * 6.2831853)
+    );
+    vec3 prismGold = mix(gold, rainbow, 0.56);
+
+    float band = pow(0.5 + 0.5 * sin((vUv.x * 0.85 + vUv.y * 0.55 + uArcX * 0.65 - uTime * 0.22) * 6.2831853), 5.5);
+    float band2 = pow(0.5 + 0.5 * sin((vUv.x * 0.52 - vUv.y * 0.65 - uArcX * 0.45 + uTime * 0.16 + 0.35) * 6.2831853), 7.0);
+    float groove = 0.5 + 0.5 * sin(vUv.x * 150.0 + vUv.y * 95.0 + uArcX * 16.0 + uTime * 1.1);
+
+    // Softly protect lower typography legibility while making art & frame radiate holo light
+    float textProtect = mix(0.46, 1.0, smoothstep(0.06, 0.34, vUv.y));
+    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    float sheenAmt = (0.095 + band * 0.28 + band2 * 0.14 + groove * band * 0.09) * (0.62 + 0.58 * (1.0 - luma));
+    col += prismGold * sheenAmt * textProtect;
+
+    // 3. Subtle diamond holographic sparkle flakes
+    vec2 cell = floor(vUv * vec2(220.0, 330.0));
+    float sparkle = step(0.992, hash21(cell)) *
+      pow(0.5 + 0.5 * sin(hash21(cell + 7.0) * 32.0 + uArcX * 14.0 + uTime * 2.1), 8.0);
+    col += mix(vec3(1.0, 0.96, 0.82), rainbow, 0.5) * sparkle * (0.28 + band * 0.42);
+
+    // 4. Molten Champagne-Gold + Iridescent Rainbow outer metallic bezel
+    float borderBand = smoothstep(-0.030, -0.006, d);
+    vec3 bezelCol = mix(gold * 1.05, rainbow * 1.02 + vec3(0.14), 0.36 + 0.24 * sin(phase * 6.2831853));
+    bezelCol += vec3(1.0, 0.98, 0.92) * (band * 0.34 + 0.12);
+    col = mix(col, bezelCol, borderBand * 0.90);
+
+    // Crisp outer specular glass highlight rim
+    float rim = smoothstep(-0.011, -0.001, d) * (0.55 + 0.45 * vUv.y);
+    col += vec3(1.0, 0.99, 0.95) * rim * 0.22;
+
+    float focusLift = mix(0.96, 1.04, uFocus);
+    col = clamp(col * focusLift, 0.0, 1.0);
 
     gl_FragColor = vec4(col, alpha);
   }
@@ -307,11 +353,12 @@ export function createBendingGallery(mountEl, options = {}) {
           uLoaded: { value: cached ? 1.0 : 0.0 },
           uTime: { value: 0 },
           uSpeed: { value: 0 },
+          uArcX: { value: 0 },
           uBendFactor: { value: 0.075 },
           uBorderRadius: { value: 0.052 },
           uFocus: { value: 1.0 },
-          uPlaceholderTop: { value: hexToColor(pal.bgTop, '#E8E3DA') },
-          uPlaceholderBottom: { value: hexToColor(pal.bgBottom, '#D4CEC3') },
+          uPlaceholderTop: { value: hexToColor(pal.bgTop, '#F2DFB4') },
+          uPlaceholderBottom: { value: hexToColor(pal.bgBottom, '#D9B675') },
         },
       });
 
@@ -537,6 +584,7 @@ export function createBendingGallery(mountEl, options = {}) {
         const u = item.material.uniforms;
         u.uTime.value = reducedMotion.matches ? 0 : elapsedSec;
         u.uSpeed.value = reducedMotion.matches ? 0 : velocity * 4.5;
+        u.uArcX.value = x / Math.max(1, halfViewport);
         u.uFocus.value = focus;
         u.uBendFactor.value = 0.07 + Math.min(0.11, Math.abs(velocity) * 0.38);
 

@@ -481,9 +481,25 @@ export function renderGalleryThumb(card, options = {}) {
     out.height = height;
     const ctx = out.getContext('2d');
 
-    // 1. Background
+    // 1. Background (with subtle warm champagne-gold skylight lift so dark art glows radiantly)
     if (heroBg) {
       drawImageCover(ctx, heroBg, width, height);
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      const sunLift = ctx.createRadialGradient(
+        width * 0.5,
+        height * 0.36,
+        width * 0.04,
+        width * 0.5,
+        height * 0.42,
+        height * 0.62,
+      );
+      sunLift.addColorStop(0.0, 'rgba(255, 232, 174, 0.34)');
+      sunLift.addColorStop(0.45, 'rgba(240, 198, 126, 0.18)');
+      sunLift.addColorStop(1.0, 'rgba(196, 152, 92, 0.08)');
+      ctx.fillStyle = sunLift;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
     } else {
       const bgCanvas = renderBackgroundCanvas(card, { width, height, fast: true });
       ctx.drawImage(bgCanvas, 0, 0, width, height);
