@@ -158,17 +158,26 @@ export class LRUTexturePool {
     if (cached) return cached;
 
     if (this.inFlight.has(cardId)) {
-      return this.inFlight.get(cardId);
+      const entry = this.inFlight.get(cardId);
+      if (typeof shouldCommit === 'function') {
+        entry.shouldCommit = shouldCommit;
+      }
+      return entry.promise;
     }
 
-    const promise = Promise.resolve()
+    const entry = {
+      shouldCommit: typeof shouldCommit === 'function' ? shouldCommit : null,
+      promise: null,
+    };
+
+    entry.promise = Promise.resolve()
       .then(() => resolverFn())
       .then((resolved) => {
         // Guard against stale in-flight resolution if evicted, superseded, or pool disposed
-        if (this._disposed || this.inFlight.get(cardId) !== promise) {
+        if (this._disposed || this.inFlight.get(cardId) !== entry) {
           return null;
         }
-        if (typeof shouldCommit === 'function' && !shouldCommit()) {
+        if (typeof entry.shouldCommit === 'function' && !entry.shouldCommit()) {
           return null;
         }
         const bundle = this.buildBundleFromLayers(resolved);
@@ -176,13 +185,13 @@ export class LRUTexturePool {
         return bundle;
       })
       .finally(() => {
-        if (this.inFlight.get(cardId) === promise) {
+        if (this.inFlight.get(cardId) === entry) {
           this.inFlight.delete(cardId);
         }
       });
 
-    this.inFlight.set(cardId, promise);
-    return promise;
+    this.inFlight.set(cardId, entry);
+    return entry.promise;
   }
 
   /**

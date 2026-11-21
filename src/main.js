@@ -876,7 +876,7 @@ function initApp() {
     bendingGallery.setDrawerShift(shiftDesktop);
   }
 
-  function setStageMode(nextMode, { immediateCenter = true } = {}) {
+  function setStageMode(nextMode, { immediateCenter = true, skipLoad = false } = {}) {
     const normalized = nextMode === 'focus' ? 'focus' : 'bending';
     stageMode = normalized;
     if (stageViewEl) {
@@ -903,7 +903,7 @@ function initApp() {
     } else {
       bendingGallery.setVisible(false);
       stage.setPaused?.(false);
-      if (currentCard && lastStageLoadedCardId !== currentCard.id) {
+      if (!skipLoad && currentCard && lastStageLoadedCardId !== currentCard.id) {
         const token = ++loadRequestToken;
         stage
           .loadCard(currentCard)
@@ -1047,7 +1047,7 @@ function initApp() {
     if (switchToStage && currentView !== 'stage') {
       setView('stage');
     } else if (currentView === 'stage') {
-      setStageMode(stageMode, { immediateCenter: true });
+      setStageMode(stageMode, { immediateCenter: true, skipLoad: stageMode === 'focus' });
     }
 
     if (keepDrawer !== drawerOpen) {
