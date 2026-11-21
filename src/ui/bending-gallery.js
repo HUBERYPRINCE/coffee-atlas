@@ -1,15 +1,14 @@
 /**
- * 弯曲画廊 (Inspira UI Bending Gallery · Three.js WebGL Curved Arc + Click-to-Maximize Toggle)
+ * 3D 展台 · 亮境无边界弯曲画廊 (Bright Luminous WebGL Bending Gallery)
  *
- * 视觉与物理交互参考 Inspira UI Bending Gallery：
+ * 参考 Inspira UI Bending Gallery：
+ * - 100% 透明无框 WebGL 画布，直接悬浮于与单卡 3D 展台完全一致的亮境液态玻璃环境之上（绝不变暗、无黑色蒙层）
  * - 32×32 细分平面 + 自定义 GLSL 顶点波动与圆弧弯曲映射（R = (H² + B²) / 2B）
  * - 丝滑拖拽、滚轮/触控板滑动、惯性阻尼、磁吸居中与无限循环
- * - 点击任意弯曲卡片 -> 丝滑最大化全屏典藏预览（支持 900×1350 视网膜高清升级与悬停微倾）
- * - 再次点击最大化卡片（或背景 / Esc） -> 丝滑切换回弯曲画廊模式
+ * - 点击任意弯曲卡片 -> 触发 onSelectCard(card)，在原亮色展台平滑最大化为完整 3D 全息交互单卡
  */
 
 import * as THREE from 'three';
-import { getFlavorColor } from '../../data/flavor-palette.js';
 import { renderGalleryThumb } from '../art/hybrid-resolver.js';
 
 const BENDING_VERT = /* glsl */ `
@@ -21,10 +20,10 @@ const BENDING_VERT = /* glsl */ `
   void main() {
     vUv = uv;
     vec3 p = position;
-    // Inspira UI signature organic wave ripple proportional to scroll speed
-    float speedAmp = 0.018 + min(abs(uSpeed), 2.2) * 0.24;
+    // Inspira UI organic wave ripple proportional to scroll velocity
+    float speedAmp = 0.016 + min(abs(uSpeed), 2.2) * 0.24;
     p.z += (sin(p.x * 3.8 + uTime * 1.4) * 0.55 + cos(p.y * 2.4 + uTime * 1.1) * 0.45) * speedAmp;
-    // Gentle cylindrical micro-curve across each card surface
+    // Subtle cylindrical micro-curve across each card plane
     p.z -= (p.x * p.x) * uBendFactor;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
   }
@@ -45,7 +44,7 @@ const BENDING_FRAG = /* glsl */ `
   }
 
   void main() {
-    // Aspect-aware rounded corner mask (2:3 card ratio)
+    // Aspect-aware rounded corner mask (2:3 collector card ratio)
     vec2 centered = vUv - 0.5;
     vec2 scaled = vec2(centered.x * 0.6667, centered.y);
     float d = roundedBoxSDF(scaled, vec2(0.3333, 0.5), uBorderRadius);
@@ -56,12 +55,12 @@ const BENDING_FRAG = /* glsl */ `
     vec4 texCol = texture2D(tMap, vUv);
     vec3 col = mix(fallbackCol, texCol.rgb, uLoaded);
 
-    // Subtle iOS glass specular top-left rim + gentle center spotlight lift
-    float rim = smoothstep(-0.018, -0.002, d) * (0.45 + 0.55 * vUv.y);
-    col += vec3(1.0, 0.985, 0.96) * rim * 0.11;
+    // Bright studio rim highlight so cards float crisply in the luminous light environment
+    float rim = smoothstep(-0.018, -0.002, d) * (0.5 + 0.5 * vUv.y);
+    col += vec3(1.0, 0.99, 0.97) * rim * 0.14;
 
-    // Slight dim on far-away side cards so the centered card commands focus
-    float focusLift = mix(0.84, 1.03, uFocus);
+    // Keep side cards vivid & luminous (never muddy or dark)
+    float focusLift = mix(0.95, 1.04, uFocus);
     col *= focusLift;
 
     gl_FragColor = vec4(col, alpha);
@@ -107,141 +106,15 @@ function createPlaceholderTexture() {
   c.width = 4;
   c.height = 4;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#241B16';
+  ctx.fillStyle = '#E8E4DC';
   ctx.fillRect(0, 0, 4, 4);
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
 
-function buildCardSubtitle(card) {
-  if (!card) return '';
-  if (card.cardType === 'bean_card') {
-    const o = card.origin || {};
-    const parts = [o.country, o.region || o.estate, card.processing?.name].filter(Boolean);
-    return parts.join(' · ');
-  }
-  return card.tagline || card.subtitle || '';
-}
-
-function buildCardChips(card) {
-  if (!card) return [];
-  const palette = card.visual?.palette || {};
-  if (card.cardType === 'bean_card') {
-    return (card.sensory?.flavors || []).slice(0, 4).map((fl) => ({
-      label: fl,
-      color: getFlavorColor(fl),
-    }));
-  }
-  return (card.tags || []).slice(0, 4).map((tag) => ({
-    label: tag,
-    color: palette.secondary || '#A66E29',
-  }));
-}
-
 export function createBendingGallery(mountEl, options = {}) {
-  const { onOpenInStage } = options;
-
-  mountEl.innerHTML = `
-    <div class="bending-stage" id="bending-stage">
-      <div class="bending-canvas-host" id="bending-canvas-host" aria-label="弯曲画廊交互区，左右拖拽或滚轮浏览，点击卡片最大化显示"></div>
-
-      <button type="button" class="bending-nav is-prev" id="bending-prev" aria-label="上一张弯曲画廊卡片">
-        <span aria-hidden="true">‹</span>
-      </button>
-      <button type="button" class="bending-nav is-next" id="bending-next" aria-label="下一张弯曲画廊卡片">
-        <span aria-hidden="true">›</span>
-      </button>
-
-      <div class="bending-caption-bar" id="bending-caption-bar">
-        <button type="button" class="bending-caption-pill" id="bending-caption-trigger" title="点击最大化显示当前居中卡片">
-          <span class="bending-cap-index" id="bending-cap-index">1 / 36</span>
-          <span class="bending-cap-code" id="bending-cap-code">CA-01</span>
-          <span class="bending-cap-title" id="bending-cap-title">巴拿马 翡翠庄园 绿标瑰夏</span>
-          <span class="bending-cap-cta">点击最大化</span>
-        </button>
-        <div class="bending-cap-sub" id="bending-cap-sub">拖拽或滚轮浏览弯曲弧线 · 点击任意卡片最大化，再点返回画廊</div>
-      </div>
-    </div>
-
-    <!-- 点击卡片最大化典藏层（再次点击卡片或背景返回弯曲画廊） -->
-    <div
-      class="bending-lightbox"
-      id="bending-lightbox"
-      role="dialog"
-      aria-modal="true"
-      aria-label="弯曲画廊卡片最大化预览"
-      hidden
-    >
-      <div class="bending-lightbox-backdrop" id="bending-lightbox-backdrop"></div>
-
-      <button type="button" class="bending-lb-nav is-prev" id="bending-lb-prev" aria-label="上一张卡片">
-        <span aria-hidden="true">‹</span>
-      </button>
-      <button type="button" class="bending-lb-nav is-next" id="bending-lb-next" aria-label="下一张卡片">
-        <span aria-hidden="true">›</span>
-      </button>
-
-      <div class="bending-lb-stage" id="bending-lb-stage">
-        <button
-          type="button"
-          class="bending-lb-card"
-          id="bending-lb-card"
-          title="再次点击返回弯曲画廊模式"
-          aria-label="再次点击返回弯曲画廊模式"
-        >
-          <img class="bending-lb-img" id="bending-lb-img" alt="" />
-          <span class="bending-lb-sheen" aria-hidden="true"></span>
-        </button>
-
-        <div class="bending-lb-dock" id="bending-lb-dock">
-          <div class="bending-lb-meta">
-            <div class="bending-lb-head">
-              <span class="bending-cap-code" id="bending-lb-code">CA-01</span>
-              <h2 class="bending-lb-title" id="bending-lb-title"></h2>
-            </div>
-            <p class="bending-lb-sub" id="bending-lb-sub"></p>
-            <div class="bending-lb-chips" id="bending-lb-chips"></div>
-          </div>
-
-          <div class="bending-lb-actions">
-            <button type="button" class="bending-lb-stage-btn" id="bending-lb-open-stage">
-              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z" />
-                <path d="M12 12l8-4.5" />
-                <path d="M12 12v9" />
-                <path d="M12 12L4 7.5" />
-              </svg>
-              <span>3D 全息翻面</span>
-            </button>
-            <span class="bending-lb-hint">轻点卡片返回画廊</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-
-  const elStage = mountEl.querySelector('#bending-stage');
-  const elCanvasHost = mountEl.querySelector('#bending-canvas-host');
-  const elPrev = mountEl.querySelector('#bending-prev');
-  const elNext = mountEl.querySelector('#bending-next');
-  const elCaptionTrigger = mountEl.querySelector('#bending-caption-trigger');
-  const elCapIndex = mountEl.querySelector('#bending-cap-index');
-  const elCapCode = mountEl.querySelector('#bending-cap-code');
-  const elCapTitle = mountEl.querySelector('#bending-cap-title');
-  const elCapSub = mountEl.querySelector('#bending-cap-sub');
-
-  const elLightbox = mountEl.querySelector('#bending-lightbox');
-  const elLbBackdrop = mountEl.querySelector('#bending-lightbox-backdrop');
-  const elLbPrev = mountEl.querySelector('#bending-lb-prev');
-  const elLbNext = mountEl.querySelector('#bending-lb-next');
-  const elLbCard = mountEl.querySelector('#bending-lb-card');
-  const elLbImg = mountEl.querySelector('#bending-lb-img');
-  const elLbCode = mountEl.querySelector('#bending-lb-code');
-  const elLbTitle = mountEl.querySelector('#bending-lb-title');
-  const elLbSub = mountEl.querySelector('#bending-lb-sub');
-  const elLbChips = mountEl.querySelector('#bending-lb-chips');
-  const elLbOpenStage = mountEl.querySelector('#bending-lb-open-stage');
+  const { onSelectCard, onCenterChange } = options;
 
   const reducedMotion =
     typeof window !== 'undefined' && window.matchMedia
@@ -265,11 +138,7 @@ export function createBendingGallery(mountEl, options = {}) {
   let centeredIndex = 0;
   let lastReportedCenterIdx = -1;
 
-  // Maximized lightbox state
-  let maximizedCard = null;
-  let maximizeToken = 0;
-
-  // Three.js WebGL state (lazy initialized when first shown)
+  // Three.js WebGL state
   let renderer = null;
   let scene = null;
   let camera = null;
@@ -282,6 +151,7 @@ export function createBendingGallery(mountEl, options = {}) {
   let itemSpacing = 3.2;
   let cardW = 2.4;
   let cardH = 3.6;
+  let drawerShift = false;
 
   /** @type {Array<{ card: object, index: number, mesh: THREE.Mesh, material: THREE.ShaderMaterial, texLoaded: boolean, loading: boolean }>} */
   let items = [];
@@ -304,11 +174,11 @@ export function createBendingGallery(mountEl, options = {}) {
 
     const canvas = renderer.domElement;
     canvas.className = 'bending-canvas';
-    elCanvasHost.replaceChildren(canvas);
+    mountEl.replaceChildren(canvas);
 
     scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(42, 16 / 9, 0.1, 100);
-    camera.position.z = 11.5;
+    camera = new THREE.PerspectiveCamera(40, 16 / 9, 0.1, 100);
+    camera.position.z = 11.4;
 
     sharedGeo = new THREE.PlaneGeometry(1, 1, 32, 32);
     placeholderTex = createPlaceholderTexture();
@@ -320,10 +190,9 @@ export function createBendingGallery(mountEl, options = {}) {
   }
 
   function resize() {
-    if (isFallbackDom) return;
-    if (!renderer || !camera) return;
-    const width = Math.max(1, elCanvasHost.clientWidth || 960);
-    const height = Math.max(1, elCanvasHost.clientHeight || 480);
+    if (isFallbackDom || !renderer || !camera) return;
+    const width = Math.max(1, mountEl.clientWidth || window.innerWidth || 960);
+    const height = Math.max(1, mountEl.clientHeight || window.innerHeight || 600);
     const aspect = width / height;
 
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
@@ -337,9 +206,18 @@ export function createBendingGallery(mountEl, options = {}) {
     viewportW = viewportH * aspect;
 
     const isNarrow = width < 640;
-    cardH = viewportH * (isNarrow ? 0.64 : 0.68);
+    const prevSpacing = itemSpacing;
+    cardH = viewportH * (isNarrow ? 0.62 : 0.70);
     cardW = cardH * (2 / 3);
-    itemSpacing = cardW * (isNarrow ? 1.24 : 1.28);
+    itemSpacing = cardW * (isNarrow ? 1.24 : 1.26);
+
+    // Preserve centered card index cleanly across viewport resizes
+    if (prevSpacing > 0 && Math.abs(itemSpacing - prevSpacing) > 0.001) {
+      const ratio = itemSpacing / prevSpacing;
+      scrollTarget *= ratio;
+      scrollCurrent *= ratio;
+      scrollLast *= ratio;
+    }
 
     for (const item of items) {
       item.mesh.scale.set(cardW, cardH, 1);
@@ -367,7 +245,7 @@ export function createBendingGallery(mountEl, options = {}) {
     }
 
     item.loading = true;
-    renderGalleryThumb(item.card, { width: 420, height: 630 })
+    renderGalleryThumb(item.card, { width: 480, height: 720 })
       .then((dataUrl) => {
         if (disposed || gen !== texLoadGen || !dataUrl) return;
         const img = new Image();
@@ -387,7 +265,6 @@ export function createBendingGallery(mountEl, options = {}) {
             tex.needsUpdate = true;
             textureCache.set(id, tex);
           }
-          // Apply to all items sharing this card id (in case of small wrapped lists)
           for (const it of items) {
             if (it.card.id === id) {
               it.material.uniforms.tMap.value = tex;
@@ -413,11 +290,7 @@ export function createBendingGallery(mountEl, options = {}) {
 
     texLoadGen++;
     clearMeshes();
-
-    if (!cards.length) {
-      updateCaption(-1);
-      return;
-    }
+    if (!cards.length) return;
 
     const gen = texLoadGen;
     for (let i = 0; i < cards.length; i++) {
@@ -434,11 +307,11 @@ export function createBendingGallery(mountEl, options = {}) {
           uLoaded: { value: cached ? 1.0 : 0.0 },
           uTime: { value: 0 },
           uSpeed: { value: 0 },
-          uBendFactor: { value: 0.08 },
+          uBendFactor: { value: 0.075 },
           uBorderRadius: { value: 0.052 },
           uFocus: { value: 1.0 },
-          uPlaceholderTop: { value: hexToColor(pal.bgTop, '#2B221D') },
-          uPlaceholderBottom: { value: hexToColor(pal.bgBottom, '#15100D') },
+          uPlaceholderTop: { value: hexToColor(pal.bgTop, '#E8E3DA') },
+          uPlaceholderBottom: { value: hexToColor(pal.bgBottom, '#D4CEC3') },
         },
       });
 
@@ -457,15 +330,7 @@ export function createBendingGallery(mountEl, options = {}) {
       });
     }
 
-    // Center on index 0 cleanly
-    scrollTarget = 0;
-    scrollCurrent = 0;
-    scrollLast = 0;
-    centeredIndex = 0;
     lastReportedCenterIdx = -1;
-    updateCaption(0);
-
-    // Priority load textures near center first
     prioritizeTextures(gen);
   }
 
@@ -486,24 +351,11 @@ export function createBendingGallery(mountEl, options = {}) {
     }
   }
 
-  function updateCaption(idx) {
-    if (!cards.length || idx < 0 || idx >= cards.length) {
-      if (elCapIndex) elCapIndex.textContent = '0 / 0';
-      if (elCapCode) elCapCode.textContent = '--';
-      if (elCapTitle) elCapTitle.textContent = '暂无匹配卡片';
-      if (elCapSub) elCapSub.textContent = '可尝试清除筛选条件查看全部 36 张咖啡图鉴';
-      return;
+  function clampScroll(val) {
+    if (cards.length < 4) {
+      return Math.max(0, Math.min(Math.max(0, (cards.length - 1) * itemSpacing), val));
     }
-    const card = cards[idx];
-    if (elCapIndex) elCapIndex.textContent = `${idx + 1} / ${cards.length}`;
-    if (elCapCode) elCapCode.textContent = card.code || '--';
-    if (elCapTitle) elCapTitle.textContent = card.title || '';
-    if (elCapSub) {
-      const sub = buildCardSubtitle(card);
-      elCapSub.textContent = sub
-        ? `${sub} · 点击卡片最大化显示，再点返回画廊`
-        : '拖拽或滚轮滑动弯曲弧线 · 点击卡片最大化显示';
-    }
+    return val;
   }
 
   function scheduleSnap() {
@@ -512,16 +364,7 @@ export function createBendingGallery(mountEl, options = {}) {
       if (!cards.length || isDragging) return;
       const snapped = Math.round(scrollTarget / itemSpacing) * itemSpacing;
       scrollTarget = clampScroll(snapped);
-    }, 150);
-  }
-
-  function clampScroll(val) {
-    if (cards.length < 4) {
-      const minS = 0;
-      const maxS = Math.max(0, (cards.length - 1) * itemSpacing);
-      return Math.max(minS, Math.min(maxS, val));
-    }
-    return val;
+    }, 145);
   }
 
   function stepBy(delta) {
@@ -531,124 +374,28 @@ export function createBendingGallery(mountEl, options = {}) {
     scrollTarget = clampScroll((currentStep + delta) * itemSpacing);
   }
 
-  function centerOnCardId(cardId) {
+  function centerOnCardId(cardId, { immediate = false } = {}) {
     const idx = cards.findIndex((c) => c.id === cardId);
     if (idx < 0) return;
+    centeredIndex = idx;
+    let nextTarget;
     if (cards.length >= 4) {
       const totalW = cards.length * itemSpacing;
       const targetMod = idx * itemSpacing;
       const currentCycles = Math.round((scrollTarget - targetMod) / totalW);
-      scrollTarget = targetMod + currentCycles * totalW;
+      nextTarget = targetMod + currentCycles * totalW;
     } else {
-      scrollTarget = idx * itemSpacing;
+      nextTarget = idx * itemSpacing;
     }
-  }
-
-  // ---- Maximized Lightbox (Click once -> Maximize; Click again -> Return to Bending Gallery) ----
-  function openMaximize(card) {
-    if (!card || !elLightbox) return;
-    const token = ++maximizeToken;
-    maximizedCard = card;
-    centerOnCardId(card.id);
-
-    const sub = buildCardSubtitle(card);
-    const chips = buildCardChips(card);
-
-    if (elLbCode) elLbCode.textContent = card.code || '--';
-    if (elLbTitle) elLbTitle.textContent = card.title || '';
-    if (elLbSub) elLbSub.textContent = sub;
-    if (elLbChips) {
-      elLbChips.innerHTML = chips
-        .map(
-          (ch) => `
-            <span class="specimen-chip" style="--chip-color:${escapeHtml(ch.color)}">
-              <span class="specimen-chip-dot" aria-hidden="true"></span>
-              <span>${escapeHtml(ch.label)}</span>
-            </span>
-          `,
-        )
-        .join('');
+    scrollTarget = nextTarget;
+    if (immediate) {
+      scrollCurrent = nextTarget;
+      scrollLast = nextTarget;
+      lastReportedCenterIdx = idx;
     }
-    if (elLbImg) {
-      elLbImg.alt = `${card.code || ''} ${card.title || ''}`;
-      // Instant preview using 420x630 cache, then upgrade seamlessly to retina 900x1350
-      renderGalleryThumb(card, { width: 420, height: 630 }).then((fastUrl) => {
-        if (token === maximizeToken && fastUrl && !elLbImg.dataset.hiResFor) {
-          elLbImg.src = fastUrl;
-        }
-      });
-      delete elLbImg.dataset.hiResFor;
-      renderGalleryThumb(card, { width: 900, height: 1350 }).then((hiUrl) => {
-        if (token === maximizeToken && hiUrl) {
-          elLbImg.src = hiUrl;
-          elLbImg.dataset.hiResFor = card.id;
-        }
-      });
-    }
-
-    elLbCard?.style.setProperty('--lb-rx', '0deg');
-    elLbCard?.style.setProperty('--lb-ry', '0deg');
-    elLightbox.hidden = false;
-    requestAnimationFrame(() => {
-      elLightbox.classList.add('is-open');
-    });
+    prioritizeTextures(texLoadGen);
   }
 
-  function closeMaximize() {
-    if (!maximizedCard || !elLightbox) return;
-    maximizeToken++;
-    maximizedCard = null;
-    elLightbox.classList.remove('is-open');
-    elLightbox.hidden = true;
-  }
-
-  function stepMaximized(delta) {
-    if (!maximizedCard || !cards.length) return;
-    const idx = cards.findIndex((c) => c.id === maximizedCard.id);
-    const base = idx >= 0 ? idx : 0;
-    const nextIdx = (base + delta + cards.length) % cards.length;
-    openMaximize(cards[nextIdx]);
-  }
-
-  // Click maximized card again -> toggle cleanly back to Bending Gallery mode
-  elLbCard?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    closeMaximize();
-  });
-
-  // Subtle interactive 3D pointer tilt on the maximized hero card
-  elLbCard?.addEventListener('pointermove', (e) => {
-    if (e.pointerType === 'touch' || reducedMotion.matches) return;
-    const rect = elLbCard.getBoundingClientRect();
-    if (!rect.width || !rect.height) return;
-    const nx = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
-    const ny = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
-    elLbCard.style.setProperty('--lb-ry', `${(nx * 8.5).toFixed(2)}deg`);
-    elLbCard.style.setProperty('--lb-rx', `${(-ny * 6.5).toFixed(2)}deg`);
-  });
-
-  elLbCard?.addEventListener('pointerleave', () => {
-    elLbCard.style.setProperty('--lb-rx', '0deg');
-    elLbCard.style.setProperty('--lb-ry', '0deg');
-  });
-
-  elLbBackdrop?.addEventListener('click', () => closeMaximize());
-  elLbPrev?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    stepMaximized(-1);
-  });
-  elLbNext?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    stepMaximized(1);
-  });
-  elLbOpenStage?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const targetId = maximizedCard?.id;
-    closeMaximize();
-    if (targetId) onOpenInStage?.(targetId);
-  });
-
-  // ---- Canvas Pointer & Wheel Events ----
   function bindCanvasEvents(canvas) {
     let activePointerId = null;
 
@@ -682,7 +429,7 @@ export function createBendingGallery(mountEl, options = {}) {
       activePointerId = null;
       canvas.classList.remove('is-dragging');
 
-      // Tap / Click detection (< 10px movement): Raycast clicked card -> Maximize!
+      // Clean click/tap (< 10px drag) -> Raycast card & maximize to full 3D Holographic Card!
       if (dragDistance < 10 && raycaster && camera && items.length) {
         const rect = canvas.getBoundingClientRect();
         const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -696,7 +443,8 @@ export function createBendingGallery(mountEl, options = {}) {
           const hitIdx = hits[0].object.userData.cardIndex;
           const hitCard = cards[hitIdx];
           if (hitCard) {
-            openMaximize(hitCard);
+            centerOnCardId(hitCard.id, { immediate: false });
+            onSelectCard?.(hitCard);
             return;
           }
         }
@@ -711,7 +459,7 @@ export function createBendingGallery(mountEl, options = {}) {
     canvas.addEventListener(
       'wheel',
       (e) => {
-        if (!visible || maximizedCard) return;
+        if (!visible) return;
         const primaryDelta = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY;
         if (Math.abs(primaryDelta) < 0.5) return;
         e.preventDefault();
@@ -722,15 +470,8 @@ export function createBendingGallery(mountEl, options = {}) {
     );
   }
 
-  elPrev?.addEventListener('click', () => stepBy(-1));
-  elNext?.addEventListener('click', () => stepBy(1));
-  elCaptionTrigger?.addEventListener('click', () => {
-    const card = cards[centeredIndex];
-    if (card) openMaximize(card);
-  });
-
-  // ---- Main Animation Loop (Paused when hidden!) ----
   let startTime = performance.now();
+  let currentDrawerShiftX = 0;
 
   function tick(now) {
     if (disposed || !visible) {
@@ -746,6 +487,9 @@ export function createBendingGallery(mountEl, options = {}) {
     scrollCurrent += (scrollTarget - scrollCurrent) * ease;
     const velocity = scrollCurrent - scrollLast;
     scrollLast = scrollCurrent;
+
+    const targetShift = drawerShift && (mountEl.clientWidth || 1200) >= 960 ? -viewportW * 0.14 : 0;
+    currentDrawerShiftX += (targetShift - currentDrawerShiftX) * ease;
 
     const count = items.length;
     if (count > 0) {
@@ -772,8 +516,7 @@ export function createBendingGallery(mountEl, options = {}) {
           nearestIdx = i;
         }
 
-        // Cull items well outside visible frustum
-        const isInView = absX < halfViewport + cardW * 1.4;
+        const isInView = absX < halfViewport + cardW * 1.45;
         item.mesh.visible = isInView;
         if (!isInView) continue;
 
@@ -781,12 +524,11 @@ export function createBendingGallery(mountEl, options = {}) {
         const underSqrt = Math.max(0, radius * radius - effX * effX);
         const arc = radius - Math.sqrt(underSqrt);
 
-        // Convex rainbow arch: center card rises proudest, side cards gracefully bend down & tilt outward
-        item.mesh.position.x = x;
-        item.mesh.position.y = -arc * 0.88 + 0.14;
-        item.mesh.position.z = -arc * 0.55;
-        item.mesh.rotation.z = -Math.sign(x) * Math.asin(Math.min(0.95, effX / radius)) * 0.92;
-        item.mesh.rotation.y = -Math.sign(x) * Math.min(0.32, (absX / Math.max(1, halfViewport)) * 0.24);
+        item.mesh.position.x = x + currentDrawerShiftX;
+        item.mesh.position.y = -arc * 0.85 + 0.12;
+        item.mesh.position.z = -arc * 0.52;
+        item.mesh.rotation.z = -Math.sign(x) * Math.asin(Math.min(0.95, effX / radius)) * 0.90;
+        item.mesh.rotation.y = -Math.sign(x) * Math.min(0.30, (absX / Math.max(1, halfViewport)) * 0.22);
 
         const focus = Math.max(0, 1 - absX / (itemSpacing * 1.75));
         const scaleBoost = 1 + focus * 0.085;
@@ -796,7 +538,7 @@ export function createBendingGallery(mountEl, options = {}) {
         u.uTime.value = reducedMotion.matches ? 0 : elapsedSec;
         u.uSpeed.value = reducedMotion.matches ? 0 : velocity * 4.5;
         u.uFocus.value = focus;
-        u.uBendFactor.value = 0.075 + Math.min(0.12, Math.abs(velocity) * 0.4);
+        u.uBendFactor.value = 0.07 + Math.min(0.11, Math.abs(velocity) * 0.38);
 
         if (!item.texLoaded && !item.loading && absX < halfViewport + cardW * 1.1) {
           loadTextureForItem(item, texLoadGen);
@@ -806,24 +548,23 @@ export function createBendingGallery(mountEl, options = {}) {
       centeredIndex = nearestIdx;
       if (centeredIndex !== lastReportedCenterIdx) {
         lastReportedCenterIdx = centeredIndex;
-        updateCaption(centeredIndex);
         prioritizeTextures(texLoadGen);
+        onCenterChange?.(cards[centeredIndex], centeredIndex);
       }
     }
 
     renderer.render(scene, camera);
   }
 
-  // ---- Graceful CSS Fallback if WebGL unavailable ----
   function renderFallbackDom() {
     if (!isFallbackDom) return;
-    elCanvasHost.innerHTML = `
+    mountEl.innerHTML = `
       <div class="bending-fallback-track">
         ${cards
           .map(
             (card) => `
               <button type="button" class="bending-fallback-card" data-fb-id="${escapeHtml(card.id)}">
-                <span class="bending-cap-code">${escapeHtml(card.code)}</span>
+                <span class="hud-code-badge">${escapeHtml(card.code)}</span>
                 <strong>${escapeHtml(card.title)}</strong>
               </button>
             `,
@@ -831,10 +572,10 @@ export function createBendingGallery(mountEl, options = {}) {
           .join('')}
       </div>
     `;
-    elCanvasHost.querySelectorAll('.bending-fallback-card').forEach((btn) => {
+    mountEl.querySelectorAll('.bending-fallback-card').forEach((btn) => {
       btn.addEventListener('click', () => {
         const card = cards.find((c) => c.id === btn.dataset.fbId);
-        if (card) openMaximize(card);
+        if (card) onSelectCard?.(card);
       });
     });
   }
@@ -851,7 +592,7 @@ export function createBendingGallery(mountEl, options = {}) {
           });
         })
       : null;
-  resizeObserver?.observe(elCanvasHost);
+  resizeObserver?.observe(mountEl);
 
   return {
     setCards(nextCards, { invalidateIds = [] } = {}) {
@@ -863,13 +604,8 @@ export function createBendingGallery(mountEl, options = {}) {
         }
       }
       cards = Array.isArray(nextCards) ? [...nextCards] : [];
-      if (maximizedCard && !cards.some((c) => c.id === maximizedCard.id)) {
-        closeMaximize();
-      }
       if (renderer || isFallbackDom) {
         rebuildMeshes();
-      } else if (cards.length) {
-        updateCaption(0);
       }
     },
 
@@ -883,39 +619,20 @@ export function createBendingGallery(mountEl, options = {}) {
           startTime = performance.now();
           rafId = requestAnimationFrame(tick);
         }
-      } else {
-        closeMaximize();
-        if (rafId) {
-          cancelAnimationFrame(rafId);
-          rafId = 0;
-        }
+      } else if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = 0;
       }
     },
 
-    isMaximized: () => Boolean(maximizedCard),
-    closeMaximize,
-
-    handleKeyDown(event) {
-      if (!visible) return false;
-      if (maximizedCard) {
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          closeMaximize();
-          return true;
-        }
-        if (event.key === 'ArrowLeft') {
-          event.preventDefault();
-          stepMaximized(-1);
-          return true;
-        }
-        if (event.key === 'ArrowRight') {
-          event.preventDefault();
-          stepMaximized(1);
-          return true;
-        }
-      }
-      return false;
+    setDrawerShift(open) {
+      drawerShift = Boolean(open);
     },
+
+    stepBy,
+    centerOnCardId,
+    getCenteredCard: () => cards[centeredIndex] || cards[0] || null,
+    resize,
 
     destroy() {
       disposed = true;

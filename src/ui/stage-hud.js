@@ -120,6 +120,26 @@ export function createStageHud(mountEl, handlers = {}) {
 
         <button
           type="button"
+          class="hud-mode-btn"
+          id="hud-stage-mode-btn"
+          title="切换弯曲画廊 / 最大化 3D 单卡模式"
+        >
+          <svg class="icon hud-mode-icon-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="5" width="6" height="14" rx="1.5" />
+            <rect x="9" y="4" width="6" height="16" rx="1.5" />
+            <rect x="15" y="5" width="6" height="14" rx="1.5" />
+          </svg>
+          <svg class="icon hud-mode-icon-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="15 3 21 3 21 9" />
+            <polyline points="9 21 3 21 3 15" />
+            <line x1="21" y1="3" x2="14" y2="10" />
+            <line x1="3" y1="21" x2="10" y2="14" />
+          </svg>
+          <span class="hud-mode-label" id="hud-mode-label">最大化</span>
+        </button>
+
+        <button
+          type="button"
           class="hud-index-pill"
           id="hud-jump-toggle"
           aria-expanded="false"
@@ -341,6 +361,8 @@ export function createStageHud(mountEl, handlers = {}) {
   const elTagline = mountEl.querySelector('#hud-tagline');
   const elPrev = mountEl.querySelector('#hud-prev');
   const elNext = mountEl.querySelector('#hud-next');
+  const elStageModeBtn = mountEl.querySelector('#hud-stage-mode-btn');
+  const elModeLabel = mountEl.querySelector('#hud-mode-label');
   const elJumpToggle = mountEl.querySelector('#hud-jump-toggle');
   const elIndexText = mountEl.querySelector('#hud-index-text');
   const elJumpPopover = mountEl.querySelector('#hud-jump-popover');
@@ -455,6 +477,7 @@ export function createStageHud(mountEl, handlers = {}) {
 
   elPrev.addEventListener('click', () => handlers.onPrev?.());
   elNext.addEventListener('click', () => handlers.onNext?.());
+  elStageModeBtn?.addEventListener('click', () => handlers.onToggleStageMode?.());
   elCardTrigger.addEventListener('click', () => handlers.onOpenDrawer?.());
   elJumpToggle.addEventListener('click', () => setJumpOpen(!jumpOpen));
 
@@ -608,9 +631,25 @@ export function createStageHud(mountEl, handlers = {}) {
     }
   }
 
+  function setStageMode(mode) {
+    const isBending = mode === 'bending';
+    if (elModeLabel) {
+      elModeLabel.textContent = isBending ? '最大化' : '画廊';
+    }
+    if (elStageModeBtn) {
+      elStageModeBtn.classList.toggle('is-expand', isBending);
+      elStageModeBtn.title = isBending ? '最大化显示当前 3D 卡片' : '返回弯曲画廊模式 (Esc)';
+      elStageModeBtn.setAttribute('aria-label', isBending ? '最大化显示当前 3D 卡片' : '返回弯曲画廊模式');
+    }
+    if (isBending && popoverOpen) {
+      setPopoverOpen(false);
+    }
+  }
+
   return {
     setDeck,
     setCard,
+    setStageMode,
     syncState,
     openPopover: () => setPopoverOpen(true),
     closePopover: () => {

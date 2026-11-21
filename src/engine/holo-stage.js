@@ -446,6 +446,9 @@ export function createHoloStage(containerEl, callbacks = {}) {
   let dragging = false;
   let dragDistance = 0;
   let lastPointer = { x: 0, y: 0 };
+  let singleClickTimer = null;
+  let paused = false;
+  let hadMultiTouch = false;
   /** @type {Map<number, {x: number, y: number}>} */
   const activePointers = new Map();
   let pinchStartDist = 0;
@@ -569,6 +572,7 @@ export function createHoloStage(containerEl, callbacks = {}) {
     if (activePointers.size === 1) {
       dragging = true;
       dragDistance = 0;
+      hadMultiTouch = false;
       auto = false;
       isPointerHovering = false;
       hoverTargetX = 0;
@@ -578,6 +582,11 @@ export function createHoloStage(containerEl, callbacks = {}) {
       emitState();
     } else if (activePointers.size === 2) {
       dragging = false;
+      hadMultiTouch = true;
+      if (singleClickTimer) {
+        clearTimeout(singleClickTimer);
+        singleClickTimer = null;
+      }
       const pts = Array.from(activePointers.values());
       pinchStartDist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) || 1;
       pinchStartZoom = zoom;
@@ -640,10 +649,27 @@ export function createHoloStage(containerEl, callbacks = {}) {
   };
 
   const releasePointer = (e) => {
+    const wasDragging = dragging;
     activePointers.delete(e.pointerId);
     if (activePointers.size === 0) {
       dragging = false;
       containerEl.classList.remove('dragging');
+      // Clean single tap/click (< 6px drag, single pointer) toggles back to Bending Gallery unless a 2nd tap flips the card
+      if (e.type === 'pointerup' && wasDragging && !hadMultiTouch && dragDistance < 6 && callbacks.onSingleClick) {
+        if (singleClickTimer) {
+          clearTimeout(singleClickTimer);
+          singleClickTimer = null;
+          // Double-tap on touch devices flips card cleanly
+          if (e.pointerType === 'touch') {
+            api.toggleFlip();
+          }
+        } else {
+          singleClickTimer = setTimeout(() => {
+            singleClickTimer = null;
+            callbacks.onSingleClick?.();
+          }, 235);
+        }
+      }
     } else if (activePointers.size === 1) {
       const [pt] = activePointers.values();
       lastPointer = { x: pt.x, y: pt.y };
@@ -652,6 +678,10 @@ export function createHoloStage(containerEl, callbacks = {}) {
   };
 
   const onDblClick = () => {
+    if (singleClickTimer) {
+      clearTimeout(singleClickTimer);
+      singleClickTimer = null;
+    }
     if (dragDistance > 8) return;
     api.toggleFlip();
   };
@@ -738,7 +768,7 @@ export function createHoloStage(containerEl, callbacks = {}) {
 
   // ---- Main Render Loop ----
   function animate(now) {
-    if (disposed) return;
+    if (disposed || paused) return;
     const dt = Math.min((now - lastTime) / 1000, 0.06) || 0;
     lastTime = now;
 
@@ -1033,6 +1063,22 @@ export function createHoloStage(containerEl, callbacks = {}) {
     },
 
     resize,
+
+    setPaused(nextPaused) {
+      const want = Boolean(nextPaused);
+      if (paused === want) return;
+      paused = want;
+      if (singleClickTimer) {
+        clearTimeout(singleClickTimer);
+        singleClickTimer = null;
+      }
+      if (!paused && !disposed) {
+        lastTime = performance.now();
+        renderer.setAnimationLoop(animate);
+      } else {
+        renderer.setAnimationLoop(null);
+      }
+    },
 
     exportPoster(options = {}) {
       if (disposed) return null;

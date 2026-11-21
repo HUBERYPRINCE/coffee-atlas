@@ -6,7 +6,6 @@
 import { getFlavorColor } from '../../data/flavor-palette.js';
 import { renderGalleryThumb } from '../art/hybrid-resolver.js';
 import { createTerroirMap } from './terroir-map.js';
-import { createBendingGallery } from './bending-gallery.js';
 
 function escapeHtml(str) {
   return String(str ?? '')
@@ -98,7 +97,6 @@ export function createGalleryView(mountEl, options = {}) {
   let activeRoast = '';
   let activeRegion = null;
   let mapOpen = false;
-  let galleryMode = 'bending';
   let searchQuery = '';
   let currentCardId = cards[0]?.id || null;
   let thumbObserver = null;
@@ -205,10 +203,6 @@ export function createGalleryView(mountEl, options = {}) {
       <div class="gallery-tabs-row">
         <div class="gallery-group-tabs" id="gallery-group-tabs" role="tablist" aria-label="图鉴分类"></div>
         <div class="gallery-summary-bar">
-          <div class="gallery-mode-switch" role="group" aria-label="画廊展示模式">
-            <button type="button" class="gallery-mode-btn is-active" id="gallery-mode-bending" data-gallery-mode="bending" aria-pressed="true">弯曲画廊</button>
-            <button type="button" class="gallery-mode-btn" id="gallery-mode-grid" data-gallery-mode="grid" aria-pressed="false">网格卡墙</button>
-          </div>
           <span id="gallery-result-count">共 ${cards.length} 张</span>
           <button type="button" class="gallery-reset-btn" id="gallery-reset-btn" hidden>重置筛选</button>
         </div>
@@ -218,8 +212,7 @@ export function createGalleryView(mountEl, options = {}) {
 
       <div class="gallery-facets" id="gallery-facets" hidden aria-label="单品豆多维筛选"></div>
 
-      <div class="gallery-bending-slot" id="gallery-bending-slot"></div>
-      <div class="gallery-grid" id="gallery-grid" role="list" hidden></div>
+      <div class="gallery-grid" id="gallery-grid" role="list"></div>
       <div class="gallery-empty" id="gallery-empty" hidden>
         <h2 class="gallery-empty-title" id="gallery-empty-title">未找到匹配的图鉴卡片</h2>
         <p class="gallery-empty-desc">可以尝试更换关键词，或重置当前分类与筛选条件查看完整 36 张图鉴。</p>
@@ -236,9 +229,6 @@ export function createGalleryView(mountEl, options = {}) {
   const elSearchInput = mountEl.querySelector('#gallery-search-input');
   const elSearchClear = mountEl.querySelector('#gallery-search-clear');
   const elGroupTabs = mountEl.querySelector('#gallery-group-tabs');
-  const elModeBending = mountEl.querySelector('#gallery-mode-bending');
-  const elModeGrid = mountEl.querySelector('#gallery-mode-grid');
-  const elBendingSlot = mountEl.querySelector('#gallery-bending-slot');
   const elFacets = mountEl.querySelector('#gallery-facets');
   const elGrid = mountEl.querySelector('#gallery-grid');
   const elEmpty = mountEl.querySelector('#gallery-empty');
@@ -254,36 +244,6 @@ export function createGalleryView(mountEl, options = {}) {
       elMapToggle.classList.toggle('is-active', mapOpen);
       elMapToggle.setAttribute('aria-expanded', String(mapOpen));
     }
-  }
-
-  const bendingGallery = createBendingGallery(elBendingSlot, {
-    onOpenInStage(cardId) {
-      onSelectCard?.(cardId);
-    },
-  });
-
-  function syncModeVisibility(hasResults = true) {
-    const isBending = galleryMode === 'bending';
-    elModeBending?.classList.toggle('is-active', isBending);
-    elModeBending?.setAttribute('aria-pressed', String(isBending));
-    elModeGrid?.classList.toggle('is-active', !isBending);
-    elModeGrid?.setAttribute('aria-pressed', String(!isBending));
-
-    if (elBendingSlot) elBendingSlot.hidden = !hasResults || !isBending;
-    if (elGrid) elGrid.hidden = !hasResults || isBending;
-
-    const shouldRunWebGL = !mountEl.hidden && hasResults && isBending;
-    bendingGallery.setVisible(shouldRunWebGL);
-    if (!mountEl.hidden && hasResults && !isBending) {
-      setupThumbObserver();
-    }
-  }
-
-  function setGalleryMode(nextMode) {
-    const normalized = nextMode === 'grid' ? 'grid' : 'bending';
-    if (galleryMode === normalized) return;
-    galleryMode = normalized;
-    syncModeVisibility(getFilteredCards().length > 0);
   }
 
   const terroirMap = createTerroirMap(elMapSlot, {
@@ -581,12 +541,10 @@ export function createGalleryView(mountEl, options = {}) {
           : `显示 ${filtered.length} / ${cards.length} 张`;
     }
     elResetBtn.hidden = !hasActiveFilters();
-    bendingGallery.setCards(filtered);
 
     if (filtered.length === 0) {
       elGrid.innerHTML = '';
       elEmpty.hidden = false;
-      syncModeVisibility(false);
       const q = searchQuery.trim();
       elEmptyTitle.textContent = q
         ? `未找到匹配「${q}」的咖啡图鉴卡片`
@@ -709,7 +667,9 @@ export function createGalleryView(mountEl, options = {}) {
       });
     });
 
-    syncModeVisibility(true);
+    if (!mountEl.hidden) {
+      setupThumbObserver();
+    }
   }
 
   function renderAll() {
@@ -717,9 +677,6 @@ export function createGalleryView(mountEl, options = {}) {
     renderFacetBar();
     renderGrid();
   }
-
-  elModeBending?.addEventListener('click', () => setGalleryMode('bending'));
-  elModeGrid?.addEventListener('click', () => setGalleryMode('grid'));
 
   elSearchInput.addEventListener('input', () => {
     searchQuery = elSearchInput.value;
@@ -762,9 +719,6 @@ export function createGalleryView(mountEl, options = {}) {
         thumbCache.delete(id);
         thumbInFlight.delete(id);
       }
-      if (invalidateIds.length > 0) {
-        bendingGallery.setCards(getFilteredCards(), { invalidateIds });
-      }
       if (elQuizMastery) {
         elQuizMastery.textContent = `已掌握 ${masteredSet.size} / ${cards.length}`;
       }
@@ -795,16 +749,8 @@ export function createGalleryView(mountEl, options = {}) {
       if (activeRegion && activeGroup !== 'all') activeGroup = 'all';
       renderAll();
     },
-    setGalleryMode,
-    getGalleryMode: () => galleryMode,
-    isMaximized: () => bendingGallery.isMaximized(),
-    closeMaximize: () => bendingGallery.closeMaximize(),
-    handleKeyDown: (event) => bendingGallery.handleKeyDown(event),
     onShow() {
-      syncModeVisibility(getFilteredCards().length > 0);
-    },
-    onHide() {
-      bendingGallery.setVisible(false);
+      setupThumbObserver();
     },
     refreshTheme() {
       terroirMap.refreshTheme?.();
@@ -815,7 +761,6 @@ export function createGalleryView(mountEl, options = {}) {
     resetFilters,
     destroy() {
       if (thumbObserver) thumbObserver.disconnect();
-      bendingGallery.destroy();
     },
   };
 }

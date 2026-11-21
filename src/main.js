@@ -7,6 +7,7 @@ import { ALL_CARDS, CARD_MAP, DECK_GROUPS, FILTER_FACETS } from '../data/deck-in
 import { createHoloStage } from './engine/holo-stage.js';
 import { invalidateCardThumb } from './art/hybrid-resolver.js';
 import { createStageHud } from './ui/stage-hud.js';
+import { createBendingGallery } from './ui/bending-gallery.js';
 import { createReadingDrawer } from './ui/reading-drawer.js';
 import { createGalleryView } from './ui/gallery-view.js';
 import { createCompareView } from './ui/compare-view.js';
@@ -281,6 +282,7 @@ function initApp() {
   const metaThemeColorEl = document.getElementById('meta-theme-color');
 
   const stageViewEl = document.getElementById('stage-view');
+  const stageBendingHostEl = document.getElementById('stage-bending-host');
   const stageHostEl = document.getElementById('stage-canvas-host');
   const stageCursorEl = document.getElementById('stage-cursor');
   const btnStagePrev = document.getElementById('btn-stage-prev');
@@ -342,7 +344,9 @@ function initApp() {
 
   let currentTheme = loadSavedTheme();
   let currentView = initialRoute.view || 'stage';
+  let stageMode = initialRoute.cardId ? 'focus' : 'bending';
   let currentCard = defaultCard;
+  let lastStageLoadedCardId = null;
   let drawerOpen = false;
   let posterModalOpen = false;
   let helpModalOpen = false;
@@ -357,7 +361,7 @@ function initApp() {
     gestureHintEl.classList.add('is-dismissed');
   }
 
-  // 1. Mount 3D Holographic Stage
+  // 1. Mount 3D Holographic Stage (Maximized Single Card Mode)
   const stage = createHoloStage(stageHostEl, {
     onStateChange(state) {
       stageHud.syncState(state);
@@ -365,11 +369,25 @@ function initApp() {
     onFlipChange() {
       dismissGestureHint();
     },
-    onLoadStart() {
-      if (stageLoadingEl) stageLoadingEl.hidden = false;
+    onSingleClick() {
+      if (
+        currentView === 'stage' &&
+        stageMode === 'focus' &&
+        !posterModalOpen &&
+        !helpModalOpen &&
+        !beanStudio.isOpen() &&
+        !stageHud.isPopoverOpen()
+      ) {
+        dismissGestureHint();
+        setStageMode('bending');
+      }
     },
-    onLoadComplete() {
+    onLoadStart() {
+      if (stageLoadingEl && stageMode === 'focus') stageLoadingEl.hidden = false;
+    },
+    onLoadComplete(card) {
       if (stageLoadingEl) stageLoadingEl.hidden = true;
+      if (card?.id) lastStageLoadedCardId = card.id;
       stageHud.syncState(stage.getState());
     },
     onFallback() {
@@ -385,17 +403,54 @@ function initApp() {
     },
   });
 
+  // 1.5 Mount Bright Luminous WebGL Bending Gallery directly on 3D Stage
+  const bendingGallery = createBendingGallery(stageBendingHostEl, {
+    onCenterChange(card) {
+      if (!card || stageMode !== 'bending') return;
+      currentCard = card;
+      applyStageGlow(card);
+      updateStageEdgeNav();
+      stageHud.setCard(card);
+      readingDrawer.setCard(card);
+      galleryView.setActiveCard(card.id);
+      if (currentView === 'stage') {
+        document.title = `${card.code} ${card.title} · 焙境图鉴`;
+      }
+    },
+    onSelectCard(card) {
+      if (!card) return;
+      dismissGestureHint();
+      selectCard(card.id, {
+        switchToStage: true,
+        targetStageMode: 'focus',
+        keepDrawer: drawerOpen,
+      });
+    },
+  });
+  bendingGallery.setCards(activeCards);
+
   // 2. Mount Bottom Floating Glass Stage HUD
   const stageHud = createStageHud(stageHudMountEl, {
     cards: activeCards,
     onPrev() {
-      stepCard(-1);
+      if (stageMode === 'bending') bendingGallery.stepBy(-1);
+      else stepCard(-1);
     },
     onNext() {
-      stepCard(1);
+      if (stageMode === 'bending') bendingGallery.stepBy(1);
+      else stepCard(1);
+    },
+    onToggleStageMode() {
+      dismissGestureHint();
+      if (stageMode === 'bending') {
+        const centered = bendingGallery.getCenteredCard() || currentCard;
+        selectCard(centered.id, { switchToStage: true, targetStageMode: 'focus', keepDrawer: drawerOpen });
+      } else {
+        setStageMode('bending');
+      }
     },
     onSelectCard(cardId) {
-      selectCard(cardId, { switchToStage: true, keepDrawer: drawerOpen });
+      selectCard(cardId, { switchToStage: true, targetStageMode: 'focus', keepDrawer: drawerOpen });
     },
     onOpenDrawer() {
       setDrawerOpen(true);
@@ -547,6 +602,7 @@ function initApp() {
       filterFacets: activeDeckMeta.filterFacets,
       invalidateIds,
     });
+    bendingGallery.setCards(activeCards, { invalidateIds });
     stageHud.setDeck(activeCards);
     compareView.setCards(activeCards, invalidateIds);
     readingDrawer.setCardMap(activeCardMap);
@@ -704,6 +760,7 @@ function initApp() {
       return (
         finePointerMq.matches &&
         currentView === 'stage' &&
+        stageMode === 'focus' &&
         !posterModalOpen &&
         !helpModalOpen &&
         !beanStudio.isOpen()
@@ -811,11 +868,58 @@ function initApp() {
     return { hide };
   })();
 
-  // 6. Core View, Drawer & Card State Orchestration
+  // 6. Core View, Stage Mode (Bending Gallery <-> Maximized 3D Focus), Drawer & Card State Orchestration
   function syncDrawerShift() {
     const shiftDesktop = drawerOpen && currentView === 'stage' && !mobileMq.matches;
     appEl.classList.toggle('is-drawer-open', shiftDesktop);
     stage.setDrawerShift(shiftDesktop);
+    bendingGallery.setDrawerShift(shiftDesktop);
+  }
+
+  function setStageMode(nextMode, { immediateCenter = true } = {}) {
+    const normalized = nextMode === 'focus' ? 'focus' : 'bending';
+    stageMode = normalized;
+    if (stageViewEl) {
+      stageViewEl.dataset.stageMode = stageMode;
+    }
+    stageHud.setStageMode(stageMode);
+
+    const inStage = currentView === 'stage';
+    if (!inStage) {
+      bendingGallery.setVisible(false);
+      stage.setPaused?.(true);
+      return;
+    }
+
+    if (stageMode === 'bending') {
+      stageCursorCtrl.hide();
+      stageHud.closePopover();
+      stage.setPaused?.(true);
+      if (stageLoadingEl) stageLoadingEl.hidden = true;
+      if (currentCard?.id) {
+        bendingGallery.centerOnCardId(currentCard.id, { immediate: immediateCenter });
+      }
+      bendingGallery.setVisible(true);
+    } else {
+      bendingGallery.setVisible(false);
+      stage.setPaused?.(false);
+      if (currentCard && lastStageLoadedCardId !== currentCard.id) {
+        const token = ++loadRequestToken;
+        stage
+          .loadCard(currentCard)
+          .then(() => {
+            if (token === loadRequestToken) {
+              lastStageLoadedCardId = currentCard.id;
+              stageHud.syncState(stage.getState());
+            }
+          })
+          .catch(() => {});
+      }
+      requestAnimationFrame(() => {
+        stage.resize?.();
+        syncDrawerShift();
+      });
+    }
   }
 
   function setDrawerOpen(nextOpen) {
@@ -848,10 +952,6 @@ function initApp() {
     compareViewEl.hidden = !inCompare;
     if (quizViewEl) quizViewEl.hidden = !inQuiz;
 
-    if (!inGallery) {
-      galleryView.onHide?.();
-    }
-
     tabStageBtn?.classList.toggle('is-active', inStage);
     tabStageBtn?.setAttribute('aria-selected', String(inStage));
     tabGalleryBtn?.classList.toggle('is-active', inGallery);
@@ -868,15 +968,14 @@ function initApp() {
 
     if (inStage) {
       document.title = `${currentCard.code} ${currentCard.title} · 焙境图鉴`;
-      if (updateHash) writeHashCard(currentCard.id);
-      requestAnimationFrame(() => {
-        stage.resize?.();
-        syncDrawerShift();
-      });
+      if (updateHash && stageMode === 'focus') writeHashCard(currentCard.id);
+      setStageMode(stageMode, { immediateCenter: true });
     } else if (inGallery) {
       stageCursorCtrl.hide();
       stageHud.closePopover();
       closePosterModal();
+      bendingGallery.setVisible(false);
+      stage.setPaused?.(true);
       if (drawerOpen) setDrawerOpen(false);
       document.title = '全套图鉴 · 焙境图鉴';
       if (updateHash) writeHash('#view=gallery');
@@ -885,6 +984,8 @@ function initApp() {
       stageCursorCtrl.hide();
       stageHud.closePopover();
       closePosterModal();
+      bendingGallery.setVisible(false);
+      stage.setPaused?.(true);
       if (drawerOpen) setDrawerOpen(false);
       document.title = '双豆对比实验室 · 焙境图鉴';
       const { beanAId, beanBId } = compareView.getPair();
@@ -894,6 +995,8 @@ function initApp() {
       stageCursorCtrl.hide();
       stageHud.closePopover();
       closePosterModal();
+      bendingGallery.setVisible(false);
+      stage.setPaused?.(true);
       if (drawerOpen) setDrawerOpen(false);
       document.title = '品鉴官闪卡盲测 · 焙境图鉴';
       if (updateHash) writeHash('#quiz');
@@ -911,6 +1014,7 @@ function initApp() {
   async function selectCard(cardId, opts = {}) {
     const {
       switchToStage = false,
+      targetStageMode = null,
       keepDrawer = drawerOpen,
       updateHash = true,
     } = opts;
@@ -929,23 +1033,36 @@ function initApp() {
     stageHud.setCard(card);
     readingDrawer.setCard(card);
     galleryView.setActiveCard(card.id);
+    bendingGallery.centerOnCardId(card.id, { immediate: stageMode !== 'bending' });
 
-    if (updateHash) {
+    const nextMode = targetStageMode || (switchToStage ? 'focus' : stageMode);
+    if (nextMode !== stageMode) {
+      stageMode = nextMode;
+    }
+
+    if (updateHash && stageMode === 'focus') {
       writeHashCard(card.id);
     }
 
     if (switchToStage && currentView !== 'stage') {
       setView('stage');
+    } else if (currentView === 'stage') {
+      setStageMode(stageMode, { immediateCenter: true });
     }
 
     if (keepDrawer !== drawerOpen) {
       setDrawerOpen(keepDrawer);
     }
 
+    if (stageMode !== 'focus') {
+      return;
+    }
+
     const token = ++loadRequestToken;
     try {
       await stage.loadCard(card);
       if (token === loadRequestToken) {
+        lastStageLoadedCardId = card.id;
         stageHud.syncState(stage.getState());
       }
     } catch (err) {
@@ -1175,7 +1292,10 @@ function initApp() {
     showToast('已复位 3D 展台视角');
   });
 
-  btnExportPoster?.addEventListener('click', () => {
+  btnExportPoster?.addEventListener('click', async () => {
+    if (stageMode === 'bending') {
+      await selectCard(currentCard.id, { switchToStage: true, targetStageMode: 'focus', keepDrawer: drawerOpen });
+    }
     openPosterModal();
   });
 
@@ -1188,14 +1308,17 @@ function initApp() {
   });
 
   btnStagePrev?.addEventListener('click', () => {
-    stepCard(-1);
+    if (stageMode === 'bending') bendingGallery.stepBy(-1);
+    else stepCard(-1);
   });
 
   btnStageNext?.addEventListener('click', () => {
-    stepCard(1);
+    if (stageMode === 'bending') bendingGallery.stepBy(1);
+    else stepCard(1);
   });
 
   stageHostEl?.addEventListener('pointerdown', dismissGestureHint, { passive: true });
+  stageBendingHostEl?.addEventListener('pointerdown', dismissGestureHint, { passive: true });
 
   mobileMq.addEventListener('change', () => {
     readingDrawer.setOpen(drawerOpen);
@@ -1273,9 +1396,9 @@ function initApp() {
         setView('gallery');
         return;
       }
-      if (currentView === 'gallery' && galleryView.isMaximized?.()) {
+      if (currentView === 'stage' && stageMode === 'focus') {
         event.preventDefault();
-        galleryView.closeMaximize();
+        setStageMode('bending');
         return;
       }
       if (currentView === 'gallery' || currentView === 'compare') {
@@ -1286,10 +1409,6 @@ function initApp() {
     }
 
     if (beanStudio.isOpen()) return;
-
-    if (currentView === 'gallery' && galleryView.handleKeyDown?.(event)) {
-      return;
-    }
 
     if (key === '?' || (key === '/' && event.shiftKey)) {
       event.preventDefault();
@@ -1369,17 +1488,29 @@ function initApp() {
       event.preventDefault();
       if (currentView !== 'stage') setView('stage');
       dismissGestureHint();
-      stage.toggleFlip();
-      stageHud.syncState(stage.getState());
+      if (stageMode === 'bending') {
+        selectCard(currentCard.id, { switchToStage: true, targetStageMode: 'focus', keepDrawer: drawerOpen }).then(() => {
+          stage.toggleFlip();
+          stageHud.syncState(stage.getState());
+        });
+      } else {
+        stage.toggleFlip();
+        stageHud.syncState(stage.getState());
+      }
       return;
     }
 
     if (lower === 'r') {
       if (currentView !== 'stage') return;
       event.preventDefault();
-      stage.resetView();
-      stageHud.syncState(stage.getState());
-      showToast('已复位 3D 展台视角');
+      if (stageMode === 'bending') {
+        bendingGallery.centerOnCardId(activeCards[0]?.id);
+        showToast('已复位弯曲画廊至首张图鉴');
+      } else {
+        stage.resetView();
+        stageHud.syncState(stage.getState());
+        showToast('已复位 3D 展台视角');
+      }
       return;
     }
 
@@ -1387,12 +1518,18 @@ function initApp() {
       if (currentView !== 'stage') return;
       event.preventDefault();
       if (posterModalOpen) closePosterModal();
-      else openPosterModal();
+      else if (stageMode === 'bending') {
+        selectCard(currentCard.id, { switchToStage: true, targetStageMode: 'focus', keepDrawer: drawerOpen }).then(() => {
+          openPosterModal();
+        });
+      } else {
+        openPosterModal();
+      }
       return;
     }
 
     if (key === ' ') {
-      if (currentView !== 'stage') return;
+      if (currentView !== 'stage' || stageMode !== 'focus') return;
       // Avoid hijacking Space when focused on a button
       if (document.activeElement && document.activeElement.tagName === 'BUTTON') return;
       event.preventDefault();
@@ -1406,14 +1543,16 @@ function initApp() {
     if (key === 'ArrowLeft') {
       if (currentView !== 'stage') return;
       event.preventDefault();
-      stepCard(-1);
+      if (stageMode === 'bending') bendingGallery.stepBy(-1);
+      else stepCard(-1);
       return;
     }
 
     if (key === 'ArrowRight') {
       if (currentView !== 'stage') return;
       event.preventDefault();
-      stepCard(1);
+      if (stageMode === 'bending') bendingGallery.stepBy(1);
+      else stepCard(1);
     }
   });
 
@@ -1440,8 +1579,8 @@ function initApp() {
       if (regionId) galleryView.selectMapRegion(regionId);
       else galleryView.setMapOpen(true);
     },
-    setGalleryMode: (mode) => galleryView.setGalleryMode?.(mode),
-    isGalleryMaximized: () => Boolean(galleryView.isMaximized?.()),
+    getStageMode: () => stageMode,
+    setStageMode: (mode) => setStageMode(mode),
     toggleTerroirMap: () => galleryView.toggleMap(),
     getMasteryStats: () => quizView.getMasteryStats(),
     openPosterModal,
