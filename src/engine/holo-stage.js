@@ -201,7 +201,7 @@ function paintPosterBackdropAndColophon(
   // Subtle second micro-line on right showing finish & foil/relief state
   const finishDesc = FINISH_POSTER_LABELS[finish] || FINISH_POSTER_LABELS.gold;
   const detailParts = [finishDesc];
-  if (finish !== 'original') detailParts.push(`FOIL ${Math.round((foil ?? 0.62) * 100)}%`);
+  if (finish !== 'original') detailParts.push(`FOIL ${Math.round((foil ?? 0.72) * 100)}%`);
   if (relief) detailParts.push('RELIEF');
   ctx.font = `500 15px ${POSTER_MONO_FONT}`;
   ctx.fillStyle = inkSub;
@@ -348,7 +348,7 @@ export function createHoloStage(containerEl, callbacks = {}) {
       : 'light';
 
   renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
 
@@ -413,7 +413,7 @@ export function createHoloStage(containerEl, callbacks = {}) {
   let dealDirection = 1;
 
   let finish = 'gold';
-  let foil = 0.78;
+  let foil = 0.72;
   let relief = false;
   let flipped = false;
   let auto = !reducedMotion.matches;
@@ -515,7 +515,7 @@ export function createHoloStage(containerEl, callbacks = {}) {
     camera.bottom = -halfHeight;
     camera.updateProjectionMatrix();
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
     renderer.setSize(width, height, false);
     targetShiftX = computeDrawerShiftOffset();
   }
@@ -547,7 +547,7 @@ export function createHoloStage(containerEl, callbacks = {}) {
   function applyCardVisualDefaults(card) {
     const vis = card?.visual || {};
     finish = FINISH_MAP[vis.defaultFinish] !== undefined ? vis.defaultFinish : 'gold';
-    foil = THREE.MathUtils.clamp(Math.max(vis.foilStrength ?? 0.78, 0.72), 0, 1);
+    foil = THREE.MathUtils.clamp(Math.max(vis.foilStrength ?? 0.72, 0.72), 0, 1);
 
     const d = vis.depths || {};
     params.subjectScale = THREE.MathUtils.clamp(d.subjectScale ?? 1.0, 0.75, 1.35);
@@ -1015,7 +1015,7 @@ export function createHoloStage(containerEl, callbacks = {}) {
         applyCardVisualDefaults(currentCard);
       } else {
         finish = 'gold';
-        foil = 0.62;
+        foil = 0.72;
         uniforms.uFinish.value = FINISH_MAP.gold;
         uniforms.uFoil.value = foil;
       }

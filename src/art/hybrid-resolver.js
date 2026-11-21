@@ -25,6 +25,9 @@ const FRONT_W = 1024;
 const FRONT_H = 1536;
 const THUMB_W = 360;
 const THUMB_H = 540;
+const BENDING_W = 720;
+const BENDING_H = 1080;
+const MAX_BENDING_CANVAS_CACHE = 12;
 
 /** @type {Map<string, Promise<HTMLImageElement | null>>} */
 const heroImageCache = new Map();
@@ -32,6 +35,10 @@ const heroImageCache = new Map();
 const thumbDataCache = new Map();
 /** @type {Map<string, Promise<string>>} */
 const thumbInFlight = new Map();
+/** @type {Map<string, HTMLCanvasElement>} */
+const bendingCanvasCache = new Map();
+/** @type {Map<string, Promise<HTMLCanvasElement>>} */
+const bendingCanvasInFlight = new Map();
 
 function loadImageSafe(src, timeoutMs = 5500) {
   if (!src || typeof Image === 'undefined') return Promise.resolve(null);
@@ -132,6 +139,8 @@ function imageToCanvas(img, w, h, { cover = true, whiteBg = false, rect = null }
   c.width = w;
   c.height = h;
   const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
   if (whiteBg) {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, w, h);
@@ -184,6 +193,8 @@ function renderCustomPhotoSubject(img, card, width, height) {
   c.width = width;
   c.height = height;
   const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
 
   ctx.save();
   ctx.scale(width / FRONT_W, height / FRONT_H);
@@ -425,12 +436,128 @@ export async function resolveCardLayers(card, options = {}) {
 
 function encodeThumbDataURL(canvas) {
   try {
-    const webp = canvas.toDataURL('image/webp', 0.86);
+    const webp = canvas.toDataURL('image/webp', 0.90);
     if (webp && webp.startsWith('data:image/webp')) return webp;
   } catch {
     // Fallback below
   }
-  return canvas.toDataURL('image/jpeg', 0.86);
+  return canvas.toDataURL('image/jpeg', 0.90);
+}
+
+/**
+ * Composite the 4 front card layers (background, subject, effects, textFrame)
+ * onto a crisp `width x height` HTMLCanvasElement with high-quality resampling
+ * and zero milky haze veil over artwork.
+ *
+ * @param {object} card
+ * @param {number} width
+ * @param {number} height
+ * @param {{ fast?: boolean }} [options]
+ * @returns {Promise<HTMLCanvasElement>}
+ */
+async function compositeFrontCardCanvas(card, width, height, { fast = false } = {}) {
+  const layersSpec = card?.visual?.layers || {};
+  const customImageDataUrl =
+    typeof layersSpec.customImageDataUrl === 'string' && layersSpec.customImageDataUrl.trim()
+      ? layersSpec.customImageDataUrl.trim()
+      : null;
+  const heroDir = !customImageDataUrl && layersSpec.mode === 'hybrid' && layersSpec.heroDir
+    ? layersSpec.heroDir
+    : null;
+
+  let heroBg = null;
+  let heroSubject = null;
+  let customImg = null;
+  if (customImageDataUrl) {
+    customImg = await loadImageSafe(customImageDataUrl);
+  } else if (heroDir) {
+    [heroBg, heroSubject] = await Promise.all([
+      loadHeroLayer(heroDir, 'bg'),
+      loadHeroLayer(heroDir, 'subject'),
+    ]);
+  }
+
+  const out = document.createElement('canvas');
+  out.width = width;
+  out.height = height;
+  const ctx = out.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+
+  // 1. Background (preserve full contrast & saturation of hero art / jewel-rich terroir — no milky screen veil)
+  if (heroBg) {
+    drawImageCover(ctx, heroBg, width, height);
+  } else {
+    const bgCanvas = renderBackgroundCanvas(card, { width, height, fast });
+    ctx.drawImage(bgCanvas, 0, 0, width, height);
+  }
+
+  // 2. Subject
+  if (customImg) {
+    const customSubj = renderCustomPhotoSubject(customImg, card, width, height);
+    ctx.drawImage(customSubj, 0, 0, width, height);
+  } else if (heroSubject) {
+    const rect = computeSubjectRect(heroSubject, width, height);
+    ctx.drawImage(heroSubject, rect.dx, rect.dy, rect.dw, rect.dh);
+  } else {
+    const { subjectCanvas } = renderSubjectAndLineartCanvases(card, { width, height });
+    ctx.drawImage(subjectCanvas, 0, 0, width, height);
+  }
+
+  // 3. Effects
+  const fxCanvas = renderEffectsCanvas(card, { width, height, fast });
+  ctx.drawImage(fxCanvas, 0, 0, width, height);
+
+  // 4. Unified collector frame & typography
+  const textCanvas = renderTextFrameCanvas(card, { width, height });
+  ctx.drawImage(textCanvas, 0, 0, width, height);
+
+  return out;
+}
+
+/**
+ * Render and LRU-cache a lossless crisp HTMLCanvasElement (default 720 x 1080)
+ * for direct WebGL CanvasTexture upload in the 3D Bending Gallery (no lossy toDataURL re-encode).
+ *
+ * @param {object} card
+ * @param {{ width?: number, height?: number }} [options]
+ * @returns {Promise<HTMLCanvasElement>}
+ */
+export async function renderBendingCardCanvas(card, { width = 720, height = 1080 } = {}) {
+  const id = card?.id || 'unknown';
+  const w = width || BENDING_W;
+  const h = height || BENDING_H;
+  const cacheKey = `${id}:${w}x${h}`;
+
+  if (bendingCanvasCache.has(cacheKey)) {
+    const cached = bendingCanvasCache.get(cacheKey);
+    bendingCanvasCache.delete(cacheKey);
+    bendingCanvasCache.set(cacheKey, cached);
+    return cached;
+  }
+  if (bendingCanvasInFlight.has(cacheKey)) {
+    return bendingCanvasInFlight.get(cacheKey);
+  }
+
+  const job = compositeFrontCardCanvas(card, w, h, { fast: false })
+    .then((canvas) => {
+      if (bendingCanvasInFlight.get(cacheKey) === job) {
+        if (bendingCanvasCache.size >= MAX_BENDING_CANVAS_CACHE) {
+          const oldestKey = bendingCanvasCache.keys().next().value;
+          if (oldestKey !== undefined) bendingCanvasCache.delete(oldestKey);
+        }
+        bendingCanvasCache.set(cacheKey, canvas);
+      }
+      return canvas;
+    })
+    .finally(() => {
+      if (bendingCanvasInFlight.get(cacheKey) === job) {
+        bendingCanvasInFlight.delete(cacheKey);
+      }
+    });
+
+  bendingCanvasInFlight.set(cacheKey, job);
+  return job;
 }
 
 /**
@@ -454,103 +581,36 @@ export function renderGalleryThumb(card, options = {}) {
     return thumbInFlight.get(cacheKey);
   }
 
-  const job = (async () => {
-    const layersSpec = card?.visual?.layers || {};
-    const customImageDataUrl =
-      typeof layersSpec.customImageDataUrl === 'string' && layersSpec.customImageDataUrl.trim()
-        ? layersSpec.customImageDataUrl.trim()
-        : null;
-    const heroDir = !customImageDataUrl && layersSpec.mode === 'hybrid' && layersSpec.heroDir
-      ? layersSpec.heroDir
-      : null;
-
-    let heroBg = null;
-    let heroSubject = null;
-    let customImg = null;
-    if (customImageDataUrl) {
-      customImg = await loadImageSafe(customImageDataUrl);
-    } else if (heroDir) {
-      [heroBg, heroSubject] = await Promise.all([
-        loadHeroLayer(heroDir, 'bg'),
-        loadHeroLayer(heroDir, 'subject'),
-      ]);
-    }
-
-    const out = document.createElement('canvas');
-    out.width = width;
-    out.height = height;
-    const ctx = out.getContext('2d');
-
-    // 1. Background (with subtle warm champagne-gold skylight lift so dark art glows radiantly)
-    if (heroBg) {
-      drawImageCover(ctx, heroBg, width, height);
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      const sunLift = ctx.createRadialGradient(
-        width * 0.5,
-        height * 0.36,
-        width * 0.04,
-        width * 0.5,
-        height * 0.42,
-        height * 0.62,
-      );
-      sunLift.addColorStop(0.0, 'rgba(255, 232, 174, 0.34)');
-      sunLift.addColorStop(0.45, 'rgba(240, 198, 126, 0.18)');
-      sunLift.addColorStop(1.0, 'rgba(196, 152, 92, 0.08)');
-      ctx.fillStyle = sunLift;
-      ctx.fillRect(0, 0, width, height);
-      ctx.restore();
-    } else {
-      const bgCanvas = renderBackgroundCanvas(card, { width, height, fast: true });
-      ctx.drawImage(bgCanvas, 0, 0, width, height);
-    }
-
-    // 2. Subject
-    if (customImg) {
-      const customSubj = renderCustomPhotoSubject(customImg, card, width, height);
-      ctx.drawImage(customSubj, 0, 0, width, height);
-    } else if (heroSubject) {
-      const rect = computeSubjectRect(heroSubject, width, height);
-      ctx.drawImage(heroSubject, rect.dx, rect.dy, rect.dw, rect.dh);
-    } else {
-      const { subjectCanvas } = renderSubjectAndLineartCanvases(card, { width, height });
-      ctx.drawImage(subjectCanvas, 0, 0, width, height);
-    }
-
-    // 3. Effects
-    const fxCanvas = renderEffectsCanvas(card, { width, height, fast: true });
-    ctx.drawImage(fxCanvas, 0, 0, width, height);
-
-    // 4. Unified collector frame & typography
-    const textCanvas = renderTextFrameCanvas(card, { width, height });
-    ctx.drawImage(textCanvas, 0, 0, width, height);
-
-    const dataUrl = encodeThumbDataURL(out);
-    thumbDataCache.set(cacheKey, dataUrl);
-    return dataUrl;
-  })().finally(() => {
-    thumbInFlight.delete(cacheKey);
-  });
+  const job = compositeFrontCardCanvas(card, width, height, { fast: width <= 480 })
+    .then((out) => {
+      const dataUrl = encodeThumbDataURL(out);
+      if (thumbInFlight.get(cacheKey) === job) {
+        thumbDataCache.set(cacheKey, dataUrl);
+      }
+      return dataUrl;
+    })
+    .finally(() => {
+      if (thumbInFlight.get(cacheKey) === job) {
+        thumbInFlight.delete(cacheKey);
+      }
+    });
 
   thumbInFlight.set(cacheKey, job);
   return job;
 }
 
 /**
- * Invalidate all cached gallery thumbnail resolutions for a specific cardId
+ * Invalidate all cached gallery thumbnail & bending canvas resolutions for a specific cardId
  * (e.g., after the user edits a custom bean card in My Bean Studio).
  */
 export function invalidateCardThumb(cardId) {
   if (!cardId) return;
   const prefix = `${cardId}:`;
-  for (const key of Array.from(thumbDataCache.keys())) {
-    if (key === cardId || key.startsWith(prefix)) {
-      thumbDataCache.delete(key);
-    }
-  }
-  for (const key of Array.from(thumbInFlight.keys())) {
-    if (key === cardId || key.startsWith(prefix)) {
-      thumbInFlight.delete(key);
+  for (const cache of [thumbDataCache, thumbInFlight, bendingCanvasCache, bendingCanvasInFlight]) {
+    for (const key of Array.from(cache.keys())) {
+      if (key === cardId || key.startsWith(prefix)) {
+        cache.delete(key);
+      }
     }
   }
 }
@@ -559,4 +619,6 @@ export function clearResolverCache() {
   heroImageCache.clear();
   thumbDataCache.clear();
   thumbInFlight.clear();
+  bendingCanvasCache.clear();
+  bendingCanvasInFlight.clear();
 }

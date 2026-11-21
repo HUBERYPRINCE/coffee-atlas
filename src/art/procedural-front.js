@@ -498,28 +498,28 @@ export function renderBackgroundCanvas(card, options = {}) {
   const motif = String(card?.visual?.layers?.bgMotif || '').toLowerCase();
   const group = card?.group || '';
 
-  // 1. Luminous champagne-gold & warm terroir atmospheric vertical gradient
+  // 1. Deep jewel-rich saturated terroir vertical gradient (preserving true shadow depth)
   const baseGrad = ctx.createLinearGradient(0, 0, 0, BASE_H);
-  baseGrad.addColorStop(0.0, mixHex(palette.bgTop, '#6E5232', 0.34));
-  baseGrad.addColorStop(0.42, mixHex(palette.bgTop, palette.secondary, 0.28));
-  baseGrad.addColorStop(0.76, mixHex(palette.bgBottom, '#7A5B36', 0.36));
-  baseGrad.addColorStop(1.0, mixHex(palette.bgBottom, '#4F3920', 0.42));
+  baseGrad.addColorStop(0.0, palette.bgTop);
+  baseGrad.addColorStop(0.38, mixHex(palette.bgTop, palette.primary, 0.42));
+  baseGrad.addColorStop(0.74, mixHex(palette.bgBottom, palette.primary, 0.24));
+  baseGrad.addColorStop(1.0, mixHex(palette.bgTop, '#0C0806', 0.62));
   ctx.fillStyle = baseGrad;
   ctx.fillRect(0, 0, BASE_W, BASE_H);
 
-  // Radiant golden skylight halo behind botanical centerpiece
-  const sunHalo = ctx.createRadialGradient(BASE_W * 0.5, 480, 40, BASE_W * 0.5, 520, 620);
-  sunHalo.addColorStop(0.0, 'rgba(255, 236, 184, 0.34)');
-  sunHalo.addColorStop(0.45, rgba(palette.secondary, 0.22));
+  // Crisp subtle gold skylight accent focused behind centerpiece (no shadow washout)
+  const sunHalo = ctx.createRadialGradient(BASE_W * 0.5, 470, 16, BASE_W * 0.5, 510, 440);
+  sunHalo.addColorStop(0.0, 'rgba(255, 232, 168, 0.22)');
+  sunHalo.addColorStop(0.42, rgba(palette.secondary, 0.14));
   sunHalo.addColorStop(1.0, 'rgba(255, 224, 150, 0)');
   ctx.fillStyle = sunHalo;
   ctx.fillRect(0, 0, BASE_W, BASE_H);
 
-  // 2. Layered gallery spotlight + warm secondary accent glow behind focal center
-  const halo = ctx.createRadialGradient(BASE_W * 0.5, 595, 22, BASE_W * 0.5, 595, 540);
-  halo.addColorStop(0.0, rgba(palette.secondary, 0.42));
-  halo.addColorStop(0.32, rgba(palette.primary, 0.30));
-  halo.addColorStop(0.66, rgba(palette.accent, 0.14));
+  // 2. Layered gallery spotlight + rich jewel-tone accent glow behind focal center
+  const halo = ctx.createRadialGradient(BASE_W * 0.5, 595, 22, BASE_W * 0.5, 595, 520);
+  halo.addColorStop(0.0, rgba(palette.secondary, 0.30));
+  halo.addColorStop(0.34, rgba(palette.primary, 0.36));
+  halo.addColorStop(0.68, rgba(palette.accent, 0.16));
   halo.addColorStop(1.0, 'rgba(0, 0, 0, 0)');
   ctx.fillStyle = halo;
   ctx.fillRect(0, 0, BASE_W, BASE_H);
@@ -2639,30 +2639,21 @@ export function renderTextFrameCanvas(card, options = {}) {
   const frameColor = finish === 'silver' ? '#E4EFFA' : '#F6D78B';
   const frameSoft = finish === 'silver' ? 'rgba(228, 239, 250, 0.62)' : 'rgba(255, 232, 166, 0.62)';
 
-  // 1. Warm luminous champagne-amber scrims (preserves crisp typography without blackening the card!)
+  // 1. Clean translucent deep-espresso-to-clear scrims (razor-sharp contrast, zero muddy brown haze)
   const topScrim = ctx.createLinearGradient(0, 0, 0, 224);
-  topScrim.addColorStop(0, 'rgba(54, 38, 18, 0.44)');
-  topScrim.addColorStop(0.55, 'rgba(54, 38, 18, 0.14)');
-  topScrim.addColorStop(1, 'rgba(54, 38, 18, 0)');
+  topScrim.addColorStop(0.0, 'rgba(18, 12, 8, 0.42)');
+  topScrim.addColorStop(0.55, 'rgba(18, 12, 8, 0.14)');
+  topScrim.addColorStop(1.0, 'rgba(18, 12, 8, 0)');
   ctx.fillStyle = topScrim;
   ctx.fillRect(0, 0, BASE_W, 224);
 
   const bottomScrim = ctx.createLinearGradient(0, 930, 0, BASE_H);
-  bottomScrim.addColorStop(0.0, 'rgba(46, 32, 16, 0)');
-  bottomScrim.addColorStop(0.24, 'rgba(48, 33, 17, 0.54)');
-  bottomScrim.addColorStop(0.55, 'rgba(44, 30, 16, 0.76)');
-  bottomScrim.addColorStop(1.0, 'rgba(58, 40, 19, 0.84)');
+  bottomScrim.addColorStop(0.0, 'rgba(14, 9, 6, 0)');
+  bottomScrim.addColorStop(0.28, 'rgba(14, 9, 6, 0.56)');
+  bottomScrim.addColorStop(0.64, 'rgba(14, 9, 6, 0.78)');
+  bottomScrim.addColorStop(1.0, 'rgba(14, 9, 6, 0.86)');
   ctx.fillStyle = bottomScrim;
   ctx.fillRect(0, 930, BASE_W, BASE_H - 930);
-
-  // Subtle iridescent champagne-gold satin shimmer wash across the bottom title plate
-  const plateGlow = ctx.createLinearGradient(0, 1060, BASE_W, BASE_H);
-  plateGlow.addColorStop(0.0, 'rgba(255, 224, 146, 0.14)');
-  plateGlow.addColorStop(0.35, 'rgba(255, 200, 230, 0.08)');
-  plateGlow.addColorStop(0.68, 'rgba(170, 230, 255, 0.09)');
-  plateGlow.addColorStop(1.0, 'rgba(255, 228, 152, 0.18)');
-  ctx.fillStyle = plateGlow;
-  ctx.fillRect(0, 1050, BASE_W, BASE_H - 1050);
 
   // 2. Radiant Champagne-Gold & Iridescent Pearl Metallic Collector Bezel
   const bezelGrad = ctx.createLinearGradient(0, 0, BASE_W, BASE_H);
@@ -2698,30 +2689,30 @@ export function renderTextFrameCanvas(card, options = {}) {
   ctx.stroke();
 
   // Luminous top/bottom center ornamental diamonds on inner frame
-  ctx.fillStyle = '#FFF3C4';
+  ctx.fillStyle = finish === 'silver' ? '#F2F8FF' : '#FFF3C4';
   drawDiamond(ctx, BASE_W * 0.5, 48, 8.5, 8.5);
   ctx.fill();
   drawDiamond(ctx, BASE_W * 0.5, BASE_H - 48, 8.5, 8.5);
   ctx.fill();
 
-  // 3. Top Header Band: luminous warm bronze-gold code badge + crisp right origin/altitude stamp
+  // 3. Top Header Band: dark-velvet gold-rimmed code badge + crisp right origin/altitude stamp
   const code = String(card?.code || 'CA-00');
   ctx.font = `700 26px ${MONO_FONT}`;
   const codeW = Math.max(114, ctx.measureText(code).width + 42);
 
   roundRectPath(ctx, 70, 72, codeW, 54, 27);
-  ctx.fillStyle = 'rgba(66, 46, 22, 0.72)';
+  ctx.fillStyle = 'rgba(24, 16, 10, 0.80)';
   ctx.fill();
-  ctx.strokeStyle = '#FFE6A3';
+  ctx.strokeStyle = finish === 'silver' ? '#DCEBFA' : '#F6D78B';
   ctx.lineWidth = 2.2;
   ctx.stroke();
 
-  ctx.fillStyle = '#FFF5D1';
+  ctx.fillStyle = finish === 'silver' ? '#F5FAFF' : '#FFF6D8';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(code, 70 + codeW / 2, 100);
 
-  // Right stamp (24px bold high-contrast with subtle dark drop shadow)
+  // Right stamp (25px crisp white high-contrast with tight dark drop shadow)
   const rightStamp = getHeaderRightStamp(card);
   if (rightStamp) {
     const fitted = fitTextSingleLine(ctx, rightStamp, 570, '600', 25, 21, SANS_FONT);
@@ -2729,39 +2720,45 @@ export function renderTextFrameCanvas(card, options = {}) {
     ctx.font = `600 ${fitted.size}px ${SANS_FONT}`;
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(6, 3, 2, 0.78)';
-    ctx.shadowBlur = 10;
+    ctx.shadowColor = 'rgba(4, 2, 1, 0.86)';
+    ctx.shadowBlur = 8;
     ctx.shadowOffsetY = 2;
-    ctx.fillStyle = 'rgba(248, 241, 231, 0.94)';
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.96)';
     ctx.fillText(fitted.text, BASE_W - 72, 100);
     ctx.restore();
   }
 
-  // 4. Lower Typography Showcase (commanding museum large-type hierarchy with generous breathing room)
-  // Ornamental brass divider line above title
-  ctx.strokeStyle = rgba(frameColor, 0.52);
-  ctx.lineWidth = 1.5;
+  // 4. Lower Typography Showcase (4K razor-sharp hierarchy with rich contrast)
+  // Crisp subtle tapered gold divider line above title
+  const divGrad = ctx.createLinearGradient(80, 1072, BASE_W - 80, 1072);
+  divGrad.addColorStop(0.0, rgba(frameColor, 0.14));
+  divGrad.addColorStop(0.24, rgba(frameColor, 0.72));
+  divGrad.addColorStop(0.5, rgba(frameColor, 0.92));
+  divGrad.addColorStop(0.76, rgba(frameColor, 0.72));
+  divGrad.addColorStop(1.0, rgba(frameColor, 0.14));
+  ctx.strokeStyle = divGrad;
+  ctx.lineWidth = 1.6;
   ctx.beginPath();
   ctx.moveTo(80, 1072);
   ctx.lineTo(BASE_W * 0.5 - 24, 1072);
   ctx.moveTo(BASE_W * 0.5 + 24, 1072);
   ctx.lineTo(BASE_W - 80, 1072);
   ctx.stroke();
-  ctx.fillStyle = frameColor;
+  ctx.fillStyle = finish === 'silver' ? '#F2F8FF' : '#FCE4A2';
   drawDiamond(ctx, BASE_W * 0.5, 1072, 7.5, 7.5);
   ctx.fill();
 
-  // Main Card Title (enlarged 56–64px commanding serif with warm dark drop shadow)
+  // Main Card Title (razor-sharp #FFFFFF serif with tight espresso drop shadow)
   const titleText = String(card?.title || '未命名典藏卡');
   const titleFit = fitTextSingleLine(ctx, titleText, BASE_W - 136, '700', 64, 44, SERIF_FONT);
   ctx.save();
   ctx.font = `700 ${titleFit.size}px ${SERIF_FONT}`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = 'rgba(6, 3, 2, 0.85)';
-  ctx.shadowBlur = 16;
-  ctx.shadowOffsetY = 4;
-  ctx.fillStyle = '#FAF4EB';
+  ctx.shadowColor = 'rgba(4, 2, 1, 0.90)';
+  ctx.shadowBlur = 12;
+  ctx.shadowOffsetY = 3;
+  ctx.fillStyle = '#FFFFFF';
   ctx.fillText(titleFit.text, BASE_W * 0.5, 1140);
   ctx.restore();
 
@@ -2773,10 +2770,10 @@ export function renderTextFrameCanvas(card, options = {}) {
     ctx.font = `500 ${subFit.size}px ${SANS_FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.shadowColor = 'rgba(6, 3, 2, 0.72)';
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(4, 2, 1, 0.80)';
+    ctx.shadowBlur = 6;
     ctx.shadowOffsetY = 2;
-    ctx.fillStyle = 'rgba(232, 220, 204, 0.90)';
+    ctx.fillStyle = 'rgba(246, 240, 232, 0.92)';
     ctx.fillText(subFit.text, BASE_W * 0.5, 1204);
     ctx.restore();
   }
@@ -2799,21 +2796,21 @@ export function renderTextFrameCanvas(card, options = {}) {
     ctx.beginPath();
     ctx.arc(dotX, 1266, 8.5, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = rgba(frameColor, 0.88);
+    ctx.strokeStyle = rgba(frameColor, 0.92);
     ctx.lineWidth = 1.8;
     ctx.stroke();
 
     ctx.save();
-    ctx.shadowColor = 'rgba(6, 3, 2, 0.75)';
-    ctx.shadowBlur = 8;
+    ctx.shadowColor = 'rgba(4, 2, 1, 0.82)';
+    ctx.shadowBlur = 6;
     ctx.shadowOffsetY = 2;
-    ctx.fillStyle = 'rgba(244, 234, 220, 0.95)';
+    ctx.fillStyle = 'rgba(252, 248, 242, 0.96)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(metaFit.text, BASE_W * 0.5 + 8, 1266);
     ctx.restore();
 
-    // Top 3-4 Enlarged Colored Flavor Capsules (25px)
+    // Top 3-4 Enlarged Vivid Flavor Capsules (25px)
     const flavors = (card?.sensory?.flavors || [])
       .slice(0, 4)
       .map((f) => (typeof f === 'string' ? f : f?.name))
@@ -2834,10 +2831,10 @@ export function renderTextFrameCanvas(card, options = {}) {
       const tagFit = fitTextSingleLine(ctx, displayTagline, BASE_W - 140, '500', 27, 25, SERIF_FONT);
       ctx.save();
       ctx.font = `500 ${tagFit.size}px ${SERIF_FONT}`;
-      ctx.shadowColor = 'rgba(6, 3, 2, 0.75)';
-      ctx.shadowBlur = 8;
+      ctx.shadowColor = 'rgba(4, 2, 1, 0.82)';
+      ctx.shadowBlur = 6;
       ctx.shadowOffsetY = 2;
-      ctx.fillStyle = 'rgba(242, 228, 206, 0.95)';
+      ctx.fillStyle = 'rgba(252, 248, 242, 0.96)';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(tagFit.text, BASE_W * 0.5, 1266);
@@ -2867,17 +2864,37 @@ export function renderTextFrameCanvas(card, options = {}) {
     card?.visual?.rarity === 'legendary' ? 3 : card?.visual?.rarity === 'rare' ? 2 : 1;
   const stars = Array(rarityCount).fill('◆').join(' ');
 
+  ctx.save();
   ctx.font = `600 18px ${MONO_FONT}`;
-  ctx.fillStyle = rgba(frameColor, 0.78);
+  ctx.shadowColor = 'rgba(4, 2, 1, 0.72)';
+  ctx.shadowBlur = 5;
+  ctx.shadowOffsetY = 1;
+  ctx.fillStyle = rgba(frameColor, 0.88);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
   ctx.fillText('ROAST & TERROIR ATLAS', 78, 1448);
 
   ctx.textAlign = 'right';
   ctx.fillText(stars, BASE_W - 78, 1448);
+  ctx.restore();
 
   ctx.restore();
   return canvas;
+}
+
+/**
+ * Keep dark SCA berry/wine/roast flavor dots vividly saturated against dark-velvet pills
+ * without altering already bright floral/citrus/fruit hex tones.
+ */
+function boostVividFlavorDot(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  const max = Math.max(r, g, b);
+  if (max <= 0 || max >= 158) return hex;
+  const gain = 178 / max;
+  const nr = Math.min(255, Math.round(r * gain));
+  const ng = Math.min(255, Math.round(g * gain));
+  const nb = Math.min(255, Math.round(b * gain));
+  return `rgb(${nr}, ${ng}, ${nb})`;
 }
 
 function drawFrontCapsules(ctx, labels, centerY, useFlavorColors, frameColor) {
@@ -2921,20 +2938,29 @@ function drawFrontCapsules(ctx, labels, centerY, useFlavorColors, frameColor) {
   let curX = (BASE_W - totalW) / 2;
   for (const item of chosen) {
     roundRectPath(ctx, curX, centerY - pillH / 2, item.w, pillH, pillH / 2);
-    ctx.fillStyle = 'rgba(62, 44, 22, 0.72)';
+    ctx.fillStyle = 'rgba(24, 16, 10, 0.80)';
     ctx.fill();
-    ctx.strokeStyle = rgba(item.color, 0.92);
-    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = rgba(frameColor, 0.88);
+    ctx.lineWidth = 2.0;
     ctx.stroke();
 
     if (useFlavorColors) {
-      ctx.fillStyle = item.color;
+      const dotX = curX + 23;
+      const dotR = 8.4;
+      ctx.fillStyle = boostVividFlavorDot(item.color);
       ctx.beginPath();
-      ctx.arc(curX + 23, centerY, 8.0, 0, Math.PI * 2);
+      ctx.arc(dotX, centerY, dotR, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.42)';
+      ctx.lineWidth = 1.1;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.48)';
+      ctx.beginPath();
+      ctx.arc(dotX - 2.4, centerY - 2.4, 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    ctx.fillStyle = '#FAF4EA';
+    ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillText(item.text, curX + (useFlavorColors ? 40 : 26), centerY + 1);

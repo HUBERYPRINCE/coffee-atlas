@@ -9,7 +9,7 @@
  */
 
 import * as THREE from 'three';
-import { renderGalleryThumb } from '../art/hybrid-resolver.js';
+import { renderBendingCardCanvas } from '../art/hybrid-resolver.js';
 
 const BENDING_VERT = /* glsl */ `
   uniform float uTime;
@@ -49,9 +49,25 @@ const BENDING_FRAG = /* glsl */ `
     return min(max(q.x, q.y), 0.0) + length(max(q, 0.0)) - r;
   }
 
-  // Radiant 7-color prismatic rainbow spectrum
+  // Exact linear <-> sRGB helpers so SRGB8_ALPHA8 hardware linear mipmaps map 1:1
+  // into perceptual sRGB grading & zero-fog foil optics without midtone crush.
+  vec3 linearToSrgb(vec3 c) {
+    vec3 clamped = max(c, vec3(0.0));
+    vec3 hi = pow(max(clamped, vec3(0.00001)), vec3(1.0 / 2.4)) * 1.055 - vec3(0.055);
+    vec3 lo = clamped * 12.92;
+    return mix(hi, lo, step(clamped, vec3(0.0031308)));
+  }
+
+  vec3 srgbToLinear(vec3 c) {
+    vec3 clamped = clamp(c, 0.0, 1.0);
+    vec3 hi = pow((clamped + vec3(0.055)) / 1.055, vec3(2.4));
+    vec3 lo = clamped / 12.92;
+    return mix(hi, lo, step(clamped, vec3(0.04045)));
+  }
+
+  // High-chroma jewel 7-color prismatic rainbow spectrum (zero pastel milky wash)
   vec3 spectrum(float phase) {
-    return 0.62 + 0.38 * cos(6.2831853 * (phase + vec3(0.0, 0.33, 0.67)));
+    return 0.54 + 0.46 * cos(6.2831853 * (phase + vec3(0.0, 0.33, 0.67)));
   }
 
   void main() {
@@ -64,52 +80,72 @@ const BENDING_FRAG = /* glsl */ `
 
     vec3 fallbackCol = mix(uPlaceholderBottom, uPlaceholderTop, vUv.y);
     vec4 texCol = texture2D(tMap, vUv);
-    vec3 col = mix(fallbackCol, texCol.rgb, uLoaded);
+    vec3 col = linearToSrgb(mix(fallbackCol, texCol.rgb, uLoaded));
 
-    // 1. Warm luminous champagne shadow-lift so dark botanical illustrations glow richly
-    vec3 lifted = pow(max(col, vec3(0.0001)), vec3(0.82)) * 1.13 + vec3(0.068, 0.052, 0.030);
-    col = mix(col, lifted, 0.78);
+    // 1. Crisp perceptual vibrancy & micro-contrast grade (zero black-floor lift)
+    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
+    col = clamp(mix(vec3(luma), col, 1.15), 0.0, 1.0);
+    vec3 sCurve = col * col * (3.0 - 2.0 * col);
+    col = mix(col, sCurve, 0.16);
 
-    // 2. Flowing Champagne Gold + 7-Color Prismatic Holographic Foil (鎏金七彩流光)
-    float phase = vUv.x * 0.92 + vUv.y * 0.62 + uArcX * 0.58 + uTime * 0.14;
+    // 2. Zero-fog tight directional Gold & 7-Color Prismatic specular ribbons
+    float phase = vUv.x * 0.94 + vUv.y * 0.64 + uArcX * 0.62 + uTime * 0.14;
     vec3 rainbow = spectrum(phase);
     vec3 gold = mix(
-      vec3(0.95, 0.76, 0.34),
-      vec3(1.00, 0.95, 0.76),
+      vec3(0.92, 0.68, 0.22),
+      vec3(1.00, 0.92, 0.62),
       0.5 + 0.5 * sin(phase * 6.2831853)
     );
-    vec3 prismGold = mix(gold, rainbow, 0.56);
+    vec3 prismGold = mix(gold, rainbow, 0.52);
 
-    float band = pow(0.5 + 0.5 * sin((vUv.x * 0.85 + vUv.y * 0.55 + uArcX * 0.65 - uTime * 0.22) * 6.2831853), 5.5);
-    float band2 = pow(0.5 + 0.5 * sin((vUv.x * 0.52 - vUv.y * 0.65 - uArcX * 0.45 + uTime * 0.16 + 0.35) * 6.2831853), 7.0);
-    float groove = 0.5 + 0.5 * sin(vUv.x * 150.0 + vUv.y * 95.0 + uArcX * 16.0 + uTime * 1.1);
+    float band1 = pow(max(0.5 + 0.5 * sin((vUv.x * 0.85 + vUv.y * 0.55 + uArcX * 0.65 - uTime * 0.22) * 6.2831853), 0.0001), 13.0);
+    float band2 = pow(max(0.5 + 0.5 * sin((vUv.x * 0.52 - vUv.y * 0.65 - uArcX * 0.45 + uTime * 0.16 + 0.35) * 6.2831853), 0.0001), 16.0);
+    float groove = 0.5 + 0.5 * sin(vUv.x * 160.0 + vUv.y * 100.0 + uArcX * 18.0 + uTime * 1.15);
+    float narrowBand = clamp(band1 + band2 * 0.65, 0.0, 1.0);
 
-    // Softly protect lower typography legibility while making art & frame radiate holo light
-    float textProtect = mix(0.46, 1.0, smoothstep(0.06, 0.34, vUv.y));
-    float luma = dot(col, vec3(0.2126, 0.7152, 0.0722));
-    float sheenAmt = (0.095 + band * 0.28 + band2 * 0.14 + groove * band * 0.09) * (0.62 + 0.58 * (1.0 - luma));
-    col += prismGold * sheenAmt * textProtect;
+    // Protect lower typography (vUv.y < 0.30) so titles & flavor pills stay 100% razor-sharp
+    float textProtect = mix(0.22, 1.0, smoothstep(0.08, 0.32, vUv.y));
+    float grooveMod = 0.88 + 0.24 * groove;
+    float ribbonSpec = narrowBand * pow(max(narrowBand, 0.0001), 0.8);
 
-    // 3. Subtle diamond holographic sparkle flakes
-    vec2 cell = floor(vUv * vec2(220.0, 330.0));
-    float sparkle = step(0.992, hash21(cell)) *
-      pow(0.5 + 0.5 * sin(hash21(cell + 7.0) * 32.0 + uArcX * 14.0 + uTime * 2.1), 8.0);
-    col += mix(vec3(1.0, 0.96, 0.82), rainbow, 0.5) * sparkle * (0.28 + band * 0.42);
+    // Multiplicative jewel-lift + crisp ridge specular highlight (0.0 fog outside ribbon)
+    col *= 1.0 + prismGold * narrowBand * grooveMod * textProtect * 0.42;
+    col += prismGold * ribbonSpec * grooveMod * textProtect * 0.14;
 
-    // 4. Molten Champagne-Gold + Iridescent Rainbow outer metallic bezel
-    float borderBand = smoothstep(-0.030, -0.006, d);
-    vec3 bezelCol = mix(gold * 1.05, rainbow * 1.02 + vec3(0.14), 0.36 + 0.24 * sin(phase * 6.2831853));
-    bezelCol += vec3(1.0, 0.98, 0.92) * (band * 0.34 + 0.12);
-    col = mix(col, bezelCol, borderBand * 0.90);
+    // 3. Radiant Molten Gold + Flowing 7-Color Rainbow Outer Bezel
+    float borderBand = smoothstep(-0.024, -0.005, d);
+    float bezelPhase = phase * 1.15 + d * 12.0;
+    vec3 bezelRainbow = spectrum(bezelPhase);
+    vec3 bezelGold = mix(
+      vec3(0.90, 0.66, 0.20),
+      vec3(1.00, 0.94, 0.68),
+      0.5 + 0.5 * sin((bezelPhase + 0.15) * 6.2831853)
+    );
+    float prismMix = 0.36 + 0.28 * (0.5 + 0.5 * sin(bezelPhase * 6.2831853));
+    vec3 bezelCol = mix(bezelGold * 1.06, bezelRainbow * 1.08, prismMix);
+    float bezelSheen = pow(max(0.5 + 0.5 * sin((vUv.x * 1.10 - vUv.y * 0.70 + uArcX * 0.85 - uTime * 0.28) * 6.2831853), 0.0001), 5.0);
+    bezelCol += vec3(1.0, 0.98, 0.90) * (bezelSheen * 0.42 + narrowBand * 0.28);
+    col = mix(col, clamp(bezelCol, 0.0, 1.0), borderBand * 0.92);
+
+    // 4. Tiny crisp diamond sparkles strictly along active specular ribbon + outer gold frame
+    vec2 cell = floor(vUv * vec2(320.0, 480.0));
+    vec2 cellLocal = fract(vUv * vec2(320.0, 480.0)) - 0.5;
+    float diamondShape = 1.0 - smoothstep(0.16, 0.46, abs(cellLocal.x) + abs(cellLocal.y));
+    float twinkle = pow(max(0.5 + 0.5 * sin(hash21(cell + 7.0) * 36.0 + uArcX * 16.0 + uTime * 2.4), 0.0001), 10.0);
+    float sparkle = step(0.991, hash21(cell)) * diamondShape * twinkle;
+    float ribbonGate = narrowBand * pow(max(narrowBand, 0.0001), 0.2) * textProtect;
+    float sparkleGate = clamp(ribbonGate * 0.85 + borderBand * 0.95, 0.0, 1.0);
+    col += mix(vec3(1.0, 0.97, 0.86), rainbow, 0.45) * sparkle * sparkleGate * 0.95;
 
     // Crisp outer specular glass highlight rim
-    float rim = smoothstep(-0.011, -0.001, d) * (0.55 + 0.45 * vUv.y);
-    col += vec3(1.0, 0.99, 0.95) * rim * 0.22;
+    float rim = smoothstep(-0.009, -0.001, d) * (0.52 + 0.48 * vUv.y);
+    col += vec3(1.0, 0.99, 0.94) * rim * 0.24;
 
     float focusLift = mix(0.96, 1.04, uFocus);
     col = clamp(col * focusLift, 0.0, 1.0);
 
-    gl_FragColor = vec4(col, alpha);
+    gl_FragColor = vec4(srgbToLinear(col), alpha);
+    #include <colorspace_fragment>
   }
 `;
 
@@ -215,7 +251,7 @@ export function createBendingGallery(mountEl, options = {}) {
     }
     renderer = r;
     renderer.setClearColor(0x000000, 0);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     const canvas = renderer.domElement;
@@ -241,7 +277,7 @@ export function createBendingGallery(mountEl, options = {}) {
     const height = Math.max(1, mountEl.clientHeight || window.innerHeight || 600);
     const aspect = width / height;
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.5));
     renderer.setSize(width, height, false);
 
     camera.aspect = aspect;
@@ -291,35 +327,29 @@ export function createBendingGallery(mountEl, options = {}) {
     }
 
     item.loading = true;
-    renderGalleryThumb(item.card, { width: 480, height: 720 })
-      .then((dataUrl) => {
-        if (disposed || gen !== texLoadGen || !dataUrl) return;
-        const img = new Image();
-        img.decoding = 'async';
-        img.onload = () => {
-          if (disposed || gen !== texLoadGen) return;
-          let tex = textureCache.get(id);
-          if (!tex) {
-            tex = new THREE.Texture(img);
-            tex.colorSpace = THREE.SRGBColorSpace;
-            tex.minFilter = THREE.LinearMipmapLinearFilter;
-            tex.magFilter = THREE.LinearFilter;
-            tex.generateMipmaps = true;
-            if (renderer) {
-              tex.anisotropy = Math.min(4, renderer.capabilities.getMaxAnisotropy());
-            }
-            tex.needsUpdate = true;
-            textureCache.set(id, tex);
+    renderBendingCardCanvas(item.card, { width: 720, height: 1080 })
+      .then((canvas) => {
+        if (disposed || gen !== texLoadGen || !canvas) return;
+        let tex = textureCache.get(id);
+        if (!tex) {
+          tex = new THREE.CanvasTexture(canvas);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          tex.minFilter = THREE.LinearMipmapLinearFilter;
+          tex.magFilter = THREE.LinearFilter;
+          tex.generateMipmaps = true;
+          if (renderer) {
+            tex.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
           }
-          for (const it of items) {
-            if (it.card.id === id) {
-              it.material.uniforms.tMap.value = tex;
-              it.material.uniforms.uLoaded.value = 1.0;
-              it.texLoaded = true;
-            }
+          tex.needsUpdate = true;
+          textureCache.set(id, tex);
+        }
+        for (const it of items) {
+          if (it.card.id === id) {
+            it.material.uniforms.tMap.value = tex;
+            it.material.uniforms.uLoaded.value = 1.0;
+            it.texLoaded = true;
           }
-        };
-        img.src = dataUrl;
+        }
       })
       .catch(() => {})
       .finally(() => {
