@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#16110E" id="meta-theme-color" />
+    <title>焙境图鉴 · 世界咖啡豆 3D 全息典藏</title>
+    <script>
+      (function () {
+        try {
+          var t = window.localStorage && window.localStorage.getItem('coffee-atlas-theme-v1');
+          if (t === 'light') {
+            document.documentElement.dataset.theme = 'light';
+            var m = document.getElementById('meta-theme-color');
+            if (m) m.setAttribute('content', '#F3EFE7');
+          } else {
+            document.documentElement.dataset.theme = 'dark';
+          }
+        } catch (e) {}
+      })();
+    </script>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23110D0B'/%3E%3Ccircle cx='32' cy='32' r='22' fill='none' stroke='%23D6A25E' stroke-width='2.2'/%3E%3Cellipse cx='32' cy='32' rx='10' ry='14' transform='rotate(-22 32 32)' fill='%23D6A25E'/%3E%3Cpath d='M26 20c4 7 4 17 12 24' fill='none' stroke='%23110D0B' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="./src/styles/atelier-dark.css" />
+    <!-- STANDALONE_IMPORTMAP_START -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./node_modules/three/build/three.module.js",
+          "three/addons/": "./node_modules/three/examples/jsm/"
+        }
+      }
+    </script>
+    <!-- STANDALONE_IMPORTMAP_END -->
+  </head>
+  <body>
+    <div id="app" class="atelier-app" data-view="stage">
+      <!-- 顶部极简手冲吧台栏 -->
+      <header class="masthead" id="masthead">
+        <div class="masthead-left">
+          <button
+            type="button"
+            class="brand-mark"
+            id="brand-home"
+            aria-label="回到 3D 全息展台首页"
+          >
+            <span class="brand-dot" aria-hidden="true"></span>
+            <span class="brand-name">焙境图鉴</span>
+          </button>
+
+          <nav class="view-switch" aria-label="视图切换" role="tablist">
+            <button
+              type="button"
+              class="view-tab is-active"
+              id="tab-stage"
+              data-view-target="stage"
+              role="tab"
+              aria-selected="true"
+            >
+              <span class="label-full">3D 展台</span>
+              <span class="label-short" aria-hidden="true">展台</span>
+            </button>
+            <button
+              type="button"
+              class="view-tab"
+              id="tab-gallery"
+              data-view-target="gallery"
+              role="tab"
+              aria-selected="false"
+            >
+              <span class="label-full">全套图鉴</span>
+              <span class="label-short" aria-hidden="true">图鉴</span>
+              <span class="view-tab-count" id="deck-total-count">36</span>
+            </button>
+            <button
+              type="button"
+              class="view-tab"
+              id="tab-compare"
+              data-view-target="compare"
+              role="tab"
+              aria-selected="false"
+              title="双豆对比实验室 (C)"
+            >
+              <span class="label-full">双豆对比</span>
+              <span class="label-short" aria-hidden="true">对比</span>
+            </button>
+          </nav>
+        </div>
+
+        <div class="masthead-right">
+          <button
+            type="button"
+            class="masthead-btn"
+            id="btn-drawer-toggle"
+            aria-expanded="false"
+            aria-controls="reading-drawer"
+            title="打开或收起精读档案 (I)"
+          >
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v18H6.5A2.5 2.5 0 0 1 4 18.5z" />
+              <path d="M4 18.5A2.5 2.5 0 0 1 6.5 16H20" />
+              <line x1="9" y1="8" x2="16" y2="8" />
+              <line x1="9" y1="11.5" x2="14" y2="11.5" />
+            </svg>
+            <span class="masthead-btn-label label-full">精读档案</span>
+            <span class="masthead-btn-label label-short" aria-hidden="true">精读</span>
+            <kbd class="kbd-hint">I</kbd>
+          </button>
+
+          <button
+            type="button"
+            class="masthead-btn stage-only"
+            id="btn-reset-view"
+            title="视角复位 (R)"
+          >
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+            <span class="masthead-btn-label">复位</span>
+            <kbd class="kbd-hint">R</kbd>
+          </button>
+
+          <button
+            type="button"
+            class="masthead-btn stage-only"
+            id="btn-export-poster"
+            title="导出 1400×1800 典藏海报 PNG (S)"
+          >
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v12" />
+              <polyline points="7 11 12 16 17 11" />
+              <path d="M5 20h14" />
+            </svg>
+            <span class="masthead-btn-label">保存海报</span>
+            <kbd class="kbd-hint">S</kbd>
+          </button>
+
+          <button
+            type="button"
+            class="masthead-btn"
+            id="btn-gallery-quick"
+            title="切换全套图鉴画廊 (G)"
+          >
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3.5" y="3.5" width="7" height="7" rx="1.2" />
+              <rect x="13.5" y="3.5" width="7" height="7" rx="1.2" />
+              <rect x="3.5" y="13.5" width="7" height="7" rx="1.2" />
+              <rect x="13.5" y="13.5" width="7" height="7" rx="1.2" />
+            </svg>
+            <span class="masthead-btn-label" id="btn-gallery-label">图鉴</span>
+            <kbd class="kbd-hint">G</kbd>
+          </button>
+
+          <button
+            type="button"
+            class="masthead-btn masthead-theme-btn"
+            id="btn-theme-toggle"
+            aria-label="切换白相美术馆浅色模式"
+            title="切换白相美术馆浅色展台 (T)"
+          >
+            <svg class="icon theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4.2" />
+              <line x1="12" y1="2.5" x2="12" y2="5" />
+              <line x1="12" y1="19" x2="12" y2="21.5" />
+              <line x1="4.93" y1="4.93" x2="6.7" y2="6.7" />
+              <line x1="17.3" y1="17.3" x2="19.07" y2="19.07" />
+              <line x1="2.5" y1="12" x2="5" y2="12" />
+              <line x1="19" y1="12" x2="21.5" y2="12" />
+              <line x1="4.93" y1="19.07" x2="6.7" y2="17.3" />
+              <line x1="17.3" y1="6.7" x2="19.07" y2="4.93" />
+            </svg>
+            <svg class="icon theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a6.8 6.8 0 0 0 11 11z" />
+            </svg>
+            <span class="masthead-btn-label" id="btn-theme-label">白相</span>
+            <kbd class="kbd-hint">T</kbd>
+          </button>
+        </div>
+      </header>
+
+      <!-- 主工作区 -->
+      <main class="atelier-main" id="atelier-main">
+        <!-- 3D 全息展台视图（默认首屏） -->
+        <section class="stage-view stage-section" id="stage-view" aria-label="3D 全息展台">
+          <div class="stage-backdrop" aria-hidden="true">
+            <div class="stage-ambient-glow" id="stage-ambient-glow"></div>
+          </div>
+          <div
+            class="stage-canvas-host"
+            id="stage-canvas-host"
+            aria-label="3D 全息咖啡卡交互区，可拖拽旋转、滚轮缩放或双击翻面"
+          ></div>
+
+          <!-- 桌面端自定义极简圆环光标（仅精细指针画布内显现） -->
+          <div class="stage-cursor" id="stage-cursor" aria-hidden="true">
+            <span class="stage-cursor-ring"></span>
+            <span class="stage-cursor-dot"></span>
+          </div>
+
+          <!-- 两侧悬浮极简翻卡箭头（桌面端） -->
+          <button
+            type="button"
+            class="stage-edge-nav is-prev"
+            id="btn-stage-prev"
+            aria-label="上一张图鉴卡片"
+          >
+            <span class="stage-edge-icon" aria-hidden="true">‹</span>
+            <span class="stage-edge-tip" id="stage-prev-tip">上一张</span>
+          </button>
+
+          <button
+            type="button"
+            class="stage-edge-nav is-next"
+            id="btn-stage-next"
+            aria-label="下一张图鉴卡片"
+          >
+            <span class="stage-edge-tip" id="stage-next-tip">下一张</span>
+            <span class="stage-edge-icon" aria-hidden="true">›</span>
+          </button>
+
+          <!-- 加载中微提示 -->
+          <div class="stage-loading" id="stage-loading" aria-live="polite" hidden>
+            <span class="stage-loading-ring" aria-hidden="true"></span>
+            <span class="stage-loading-text">正在显影卡面光学层</span>
+          </div>
+
+          <!-- 极简手势提示（首次交互后自动隐退） -->
+          <div class="stage-gesture-hint" id="stage-gesture-hint" aria-hidden="true">
+            拖拽倾斜观赏扫光，双击或按 <kbd>F</kbd> 翻转品鉴卡背
+          </div>
+
+          <!-- 展台底栏控制与景深面板 -->
+          <div class="stage-hud-mount" id="stage-hud-mount"></div>
+        </section>
+
+        <!-- 36 张暗房典藏画廊卡墙视图 -->
+        <section class="gallery-view" id="gallery-view" aria-label="全套图鉴画廊" hidden></section>
+
+        <!-- 双豆对比实验室视图 -->
+        <section class="compare-view" id="compare-view" aria-label="双豆对比实验室" hidden></section>
+
+        <!-- 品鉴官闪卡盲测视图 -->
+        <section class="quiz-view" id="quiz-view" aria-label="品鉴官闪卡盲测" hidden></section>
+      </main>
+
+      <!-- 右侧双层精读科普抽屉（移动端自动转为底部抽屉） -->
+      <div class="drawer-scrim" id="drawer-scrim" hidden></div>
+      <aside
+        class="reading-drawer"
+        id="reading-drawer"
+        aria-label="卡片精读档案"
+        aria-hidden="true"
+      ></aside>
+
+      <!-- 典藏海报预览弹窗 (1400x1800 PNG) -->
+      <div
+        class="poster-modal"
+        id="poster-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="poster-modal-title"
+        hidden
+      >
+        <div class="poster-modal-backdrop" id="poster-modal-backdrop"></div>
+        <div class="poster-modal-dialog">
+          <header class="poster-modal-head">
+            <div class="poster-modal-head-copy">
+              <h2 class="poster-modal-title" id="poster-modal-title">典藏海报预览</h2>
+              <span class="poster-modal-meta" id="poster-modal-meta">1400 × 1800 PNG</span>
+            </div>
+            <button
+              type="button"
+              class="drawer-icon-btn"
+              id="poster-modal-close"
+              aria-label="关闭海报预览"
+              title="关闭 (Esc)"
+            >
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </header>
+
+          <div class="poster-modal-stage">
+            <div class="poster-preview-frame" id="poster-preview-frame">
+              <img
+                class="poster-preview-img"
+                id="poster-preview-img"
+                alt="1400×1800 典藏海报预览图"
+              />
+              <div class="poster-redraw-mask" id="poster-redraw-mask" hidden>
+                <span class="stage-loading-ring" aria-hidden="true"></span>
+                <span>正在翻转重绘高清海报</span>
+              </div>
+            </div>
+          </div>
+
+          <footer class="poster-modal-actions">
+            <button type="button" class="poster-btn-primary" id="poster-download-btn">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M12 3v12"></path>
+                <polyline points="7 11 12 16 17 11"></polyline>
+                <path d="M5 20h14"></path>
+              </svg>
+              <span>下载高清 PNG</span>
+            </button>
+            <button type="button" class="poster-btn-secondary" id="poster-flip-btn">
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M17 2l4 4-4 4"></path>
+                <path d="M3 11v-1a4 4 0 0 1 4-4h14"></path>
+                <path d="M7 22l-4-4 4-4"></path>
+                <path d="M21 13v1a4 4 0 0 1-4 4H3"></path>
+              </svg>
+              <span id="poster-flip-label">切换背面重绘</span>
+            </button>
+            <button type="button" class="poster-btn-ghost" id="poster-dismiss-btn">关闭</button>
+          </footer>
+        </div>
+      </div>
+
+      <!-- 快捷键与使用指南弹层 (?) -->
+      <div
+        class="help-modal"
+        id="help-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="help-modal-title"
+        hidden
+      >
+        <div class="help-modal-backdrop" id="help-modal-backdrop"></div>
+        <div class="help-modal-dialog">
+          <header class="help-modal-head">
+            <div>
+              <h2 class="help-modal-title" id="help-modal-title">快捷键与吧台指南</h2>
+              <p class="help-modal-sub">暗房手冲吧台与白相美术馆操作速查，在输入框打字时自动暂停快捷键</p>
+            </div>
+            <button
+              type="button"
+              class="drawer-icon-btn"
+              id="help-modal-close"
+              aria-label="关闭快捷键指南"
+              title="关闭 (Esc)"
+            >
+              <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </header>
+
+          <div class="help-modal-body">
+            <section class="help-group" aria-label="3D 展台快捷键">
+              <h3 class="help-group-title">3D 展台</h3>
+              <ul class="help-list">
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">拖拽</kbd></span>
+                  <span class="help-desc">倾斜卡片，实时观赏视角扫光与 5 层景深</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">双击</kbd><span class="help-sep">/</span><kbd class="help-kbd">F</kbd></span>
+                  <span class="help-desc">翻转正背面，查看 6 维雷达棉纸卡背</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">滚轮</kbd></span>
+                  <span class="help-desc">平滑缩放卡片（支持移动端双指捏合）</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">Space</kbd></span>
+                  <span class="help-desc">开启或暂停暗房柔和自动微摆</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">R</kbd></span>
+                  <span class="help-desc">复位视角、默认全息质感与景深参数</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">←</kbd><span class="help-sep">/</span><kbd class="help-kbd">→</kbd></span>
+                  <span class="help-desc">快速切换上一张 / 下一张图鉴卡片</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">S</kbd></span>
+                  <span class="help-desc">打开 1400×1800 典藏海报预览与下载</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">T</kbd></span>
+                  <span class="help-desc">切换暗房 / 白相浅色展台</span>
+                </li>
+              </ul>
+            </section>
+
+            <section class="help-group" aria-label="图鉴与科普快捷键">
+              <h3 class="help-group-title">图鉴与科普</h3>
+              <ul class="help-list">
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">I</kbd></span>
+                  <span class="help-desc">展开 / 收起右侧精读档案与手冲计时器</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">G</kbd></span>
+                  <span class="help-desc">切换全套图鉴卡墙与多维筛选</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">M</kbd></span>
+                  <span class="help-desc">展开 / 收起世界咖啡带交互式风土地图</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">C</kbd></span>
+                  <span class="help-desc">进入 / 退出双豆对比实验室</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">Q</kbd></span>
+                  <span class="help-desc">进入品鉴官闪卡盲测（<kbd class="help-kbd-inline">1–4</kbd> 答题）</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">N</kbd></span>
+                  <span class="help-desc">打开我的豆单工坊，录入自定义新豆</span>
+                </li>
+                <li class="help-row">
+                  <span class="help-keys"><kbd class="help-kbd">Esc</kbd></span>
+                  <span class="help-desc">关闭当前弹层、抽屉或返回上一视图</span>
+                </li>
+              </ul>
+            </section>
+          </div>
+
+          <footer class="help-modal-foot">
+            <span class="help-foot-note">随时按 <kbd class="help-kbd-inline">?</kbd> 呼出或关闭本速查卡</span>
+            <button type="button" class="poster-btn-ghost" id="help-dismiss-btn">知道了</button>
+          </footer>
+        </div>
+      </div>
+
+      <!-- 轻提示通知条 -->
+      <div class="toast-region" id="toast-region" role="status" aria-live="polite"></div>
+    </div>
+
+    <!-- STANDALONE_INLINE_ASSETS_HOOK -->
+    <!-- STANDALONE_SCRIPT_START -->
+    <script type="module" src="./src/main.js"></script>
+    <!-- STANDALONE_SCRIPT_END -->
+  </body>
+</html>
